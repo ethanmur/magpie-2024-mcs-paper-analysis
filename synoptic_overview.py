@@ -378,13 +378,30 @@ def test_plot(ds, channel='rgb', lats=[], lons=[], fill_with_ir=False,
         mts, itczs, aews = id_mt_itcz_aews(ds.time_bounds.values[0])
         combined_cmap = build_custom_cmap()
 
-        # ax.scatter(aews[0], aews[1], c=aews[2], transform=ccrs.PlateCarree(),
-        #            cmap=combined_cmap, edgecolors='w',
-        #            s=150, marker='*', vmin=190., vmax=305., label='AEW Centers')
+        # plot aews as a vertical line, not a star...
+        # build points for line here- vertical on one lon
+
+        # print(aews)
+        # print(aews[0])
+        # print(aews[1])
+
+        # cycle through aew objects for plotting
+        for aewi in range(len(aews[0])):
+            point1, point2 = (aews[0][aewi], aews[1][aewi] + 4), (aews[0][aewi], aews[1][aewi] - 4)
+            if aewi==0:
+                ax.plot(point1, point2, c='w', # transform=ccrs.PlateCarree(),
+                        lw=5., ls='--', label='AEWs')
+            else:
+                ax.plot(point1, point2, c='w', # transform=ccrs.PlateCarree(),
+                        lw=5., ls='--')
+
+            print((point1, point2))
+
+        # keep aew star as center point, but make smaller
         ax.scatter(aews[0], aews[1], c=aews[2], transform=ccrs.PlateCarree(),
                    cmap=combined_cmap, edgecolors='w',
-                   s=150, marker='*', vmin=190., vmax=305., label='AEW Centers')
-
+                   s=50, marker='*', vmin=190., vmax=305.) #, label='AEW Centers')
+        
         lw = 2.
         ax.plot(mts[0],   mts[1],   lw=lw, transform=ccrs.PlateCarree(),
                 c='darkorange',    label='MT')
