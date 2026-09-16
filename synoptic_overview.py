@@ -381,28 +381,29 @@ def test_plot(ds, channel='rgb', lats=[], lons=[], fill_with_ir=False,
         # plot aews as a vertical line, not a star...
         # build points for line here- vertical on one lon
 
-        # print(aews)
-        # print(aews[0])
-        # print(aews[1])
+        lw = 2.
 
         # cycle through aew objects for plotting
         for aewi in range(len(aews[0])):
-            point1, point2 = (aews[0][aewi], aews[1][aewi] + 4), (aews[0][aewi], aews[1][aewi] - 4)
+            lon_line = [aews[0][aewi], aews[0][aewi]]
+            lat_line = [aews[1][aewi] - 3, aews[1][aewi] + 3]
             if aewi==0:
-                ax.plot(point1, point2, c='w', # transform=ccrs.PlateCarree(),
-                        lw=5., ls='--', label='AEWs')
+                ax.plot(lon_line, lat_line, c='lightskyblue', transform=ccrs.PlateCarree(),
+                        lw=lw, ls='--', label='AEWs')
             else:
-                ax.plot(point1, point2, c='w', # transform=ccrs.PlateCarree(),
-                        lw=5., ls='--')
+                ax.plot(lon_line, lat_line, c='lightskyblue', transform=ccrs.PlateCarree(),
+                        lw=lw, ls='--')
 
-            print((point1, point2))
+            print((lon_line, lat_line))
 
         # keep aew star as center point, but make smaller
-        ax.scatter(aews[0], aews[1], c=aews[2], transform=ccrs.PlateCarree(),
-                   cmap=combined_cmap, edgecolors='w',
-                   s=50, marker='*', vmin=190., vmax=305.) #, label='AEW Centers')
-        
-        lw = 2.
+        # ax.scatter(aews[0], aews[1], c=aews[2], transform=ccrs.PlateCarree(),
+        #            cmap=combined_cmap, edgecolors='w',
+        #            s=50, marker='*', vmin=190., vmax=305.) #, label='AEW Centers')
+        ax.scatter(aews[0], aews[1], transform=ccrs.PlateCarree(),
+                           edgecolor='b', facecolor='lightskyblue',
+                           s=70, marker='o', linewidths=1., zorder=10000)
+                
         ax.plot(mts[0],   mts[1],   lw=lw, transform=ccrs.PlateCarree(),
                 c='darkorange',    label='MT')
         ax.plot(itczs[0], itczs[1], lw=lw, transform=ccrs.PlateCarree(),
