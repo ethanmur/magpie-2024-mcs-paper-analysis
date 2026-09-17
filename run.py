@@ -195,4 +195,7 @@ supplemental_calcs.plot_single_mcs_track(mcs_id=782, include_companions=False)
 # supplemental figure here
 start_time = pd.Timestamp('2024-07-15 14:30:00')
 supplemental_calcs.plot_tams_stats_nice(start_time=start_time)
+""
+
+
 # %%

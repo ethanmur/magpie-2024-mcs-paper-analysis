@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 from matplotlib.gridspec import GridSpec
 import xarray as xr
 import shapely
@@ -1161,8 +1162,8 @@ def plot_tams_stats_nice(
         all_stats[mid] = _compute_stats(mid)
 
     # ── font sizes ────────────────────────────────────────────────────────
-    label_fs = 18.
-    tick_fs  = 15.
+    label_fs = 16.5
+    tick_fs  = 14.
 
     def _panel_label(ax, letter, y=0.96):
         ax.text(0.03, y, f'({letter})', transform=ax.transAxes,
@@ -1191,8 +1192,8 @@ def plot_tams_stats_nice(
         ax_map.plot(centroids.x, centroids.y, '-o', color=color,
                    linewidth=2.0, markersize=6)
 
-    ax_map.set_xlabel('Longitude', fontsize=label_fs)
-    ax_map.set_ylabel('Latitude', fontsize=label_fs)
+    ax_map.set_xlabel('Longitude ($\degree$ W)', fontsize=label_fs)
+    ax_map.set_ylabel('Latitude ($\degree$ N)', fontsize=label_fs)
     ax_map.tick_params(labelsize=tick_fs)
     ax_map.set_aspect('equal')
     _panel_label(ax_map, 'a', y=0.98)
@@ -1223,7 +1224,8 @@ def plot_tams_stats_nice(
 
     ax_b.set_ylim(bottom=0)   # panel (b) area axis includes 0
 
-    ax_f.set_xlabel('Time (UTC)', fontsize=label_fs)
+    ax_f.set_xlabel('Date, Time (UTC)', fontsize=label_fs)
+    ax_f.xaxis.set_major_formatter(mdates.DateFormatter('%-m/%-d, %-H'))
     fig.autofmt_xdate(rotation=30)
 
     # thin panel (f)'s time ticks to every other one (drop the first, e.g. 15 UTC)
