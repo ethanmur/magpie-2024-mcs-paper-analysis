@@ -1134,4 +1134,162 @@ def combined_cold_pools():
     plt.close(fig)
     print(f'Saved {outfile}')
 
+
+
+def combined_cold_pools_wide_ir_only():
+    """
+    Figure 2 (new): simpler 2-row × 2-column grid showing general convective evolution using IR channel.
+        all panels showing time evolution of wider domain from figure 1.
+        green rectangle outlining the tight convective zoom domain shown in Figure 3, made by Jeff. Will need
+        to redefine this zoom domain to match Jeff's boxes
+
+    Publication options:
+      - Panel labels in upper-left of every active panel
+      - UTC scan times in upper-right of every active panel
+      - Lat/lon tick labels on col-0 only (bottom row for lon)
+      - Cols 1 & 2: no tick labels
+      - IR colorbar hanging off right edge of col-1, bottom row (panel m)
+      - Green box on col-0 panels showing lons_conv/lats_conv extent
+    """
+    # domain extents
+    lons_cp   = (-60,   -50);    lats_cp   = (6, 16)   # cold pool domain (wider, left col)
+    lons_conv = (-56.5, -51.5);  lats_conv = (8, 13)   # tight convective zoom (center/right cols)
+
+    # new path to relevant 4 snapshot files
+    path_data = str(path_project) + "/data/goes-level2-cold pool-4-panels/"
+
+    cp_files = pull_files_helper(path_data)
+    n_times  = len(cp_files)   # expect 4: 6Z, 12Z, 18Z, 0Z (removed 16Z for clarity + plot spacing)
+    n_cols   = 2
+    n_rows   = 2
+
+    print(f'Loading cold pool files: {cp_files}')
+    ds_cp_list   = [data_subset(path_data, f, lats_cp,   lons_cp)   for f in cp_files]
+    ds_conv_list = [data_subset(path_data, f, lats_conv, lons_conv) for f in cp_files]
+
+    # ---- figure sizing: width_ratios to match geographic aspect ratios ------
+    asp_cp   = _panel_aspect(lons_cp,   lats_cp)
+    asp_conv = _panel_aspect(lons_conv, lats_conv)
+
+    panel_h   = 2.5                       # inches per row
+    w_cp      = panel_h * asp_cp          # width of col 0
+    w_conv    = panel_h * asp_conv        # width of cols 1 & 2
+    fig_width  = w_cp + 2 * w_conv
+    fig_height = panel_h * n_rows
+
+    print(f'CP asp: {asp_cp:.3f}  |  Conv asp: {asp_conv:.3f}')
+    print(f'Figure: {fig_width:.2f} × {fig_height:.2f} in')
+
+    from matplotlib.gridspec import GridSpec
+    fig = plt.figure(figsize=(fig_width, fig_height))
+    gs  = GridSpec(n_rows, n_cols, figure=fig,
+                   width_ratios=[w_cp, w_cp],
+                   hspace=0.05, wspace=0.08)
+
+
+    # assign panel labels sequentially over active cells (row-major order)
+    active_cells = [(r, c) for r in range(n_rows) for c in range(n_cols)]
+    label_iter = iter('abcdefghijklmnopqrstuvwxyz')
+    cell_label = {cell: next(label_iter) for cell in active_cells}
+
+    col_configs = [
+        ('ir',  lons_cp,   lats_cp,   ds_cp_list),
+    ]
+
+    pc = ccrs.PlateCarree()
+
+    # shared grid positions — even degree values covering both domains
+    # ticks and gridlines use identical locations so they always coincide
+    grid_lats = np.arange(0,  20, 2).astype(float)   # 0, 2, 4, … 18
+    grid_lons = np.arange(-62, -49, 2).astype(float)  # -62, -60, -58, … -50
+
+    label_fs = plt.rcParams['axes.labelsize']
+    tick_fs  = plt.rcParams['xtick.labelsize']
+
+    for col, (channel, lons, lats, ds_list) in enumerate(col_configs):
+        for row in range(n_rows):
+            ax  = fig.add_subplot(gs[row, col], projection=ccrs.PlateCarree())
+            ds  = ds_list[row]
+            lbl = cell_label[(row, col)]
+
+            is_left   = (col == 0)
+            is_bottom = (row == n_rows - 1)
+            is_panel_m = (col == 1 and is_bottom)
+
+            # IR colorbar on col-1 bottom row (panel m), padded from panel edge
+            show_cbar = (col == 1)
+            cax = None
+            if show_cbar:
+                cax = ax.inset_axes([1.06, 0.05, 0.06, 0.90])
+
+            # let test_plot draw the image; suppress its tick logic entirely
+            test_plot(ds, channel=channel, lats=lats, lons=lons,
+                      ax=ax, fig=fig,
+                      show_colorbar=show_cbar, cax=cax,
+                      show_lat=False, show_lon=False,
+                      show_title_banner=False,
+                      show_time=is_left,
+                      panel_label=lbl,
+                      label_x=0.06, label_y=0.94,
+                      time_x=0.94, time_y=0.94)
+
+            # ---- ticks: use grid positions so ticks always sit on gridlines ----
+            # strict-interior filter avoids crowded boundary ticks between panels
+            panel_lon_ticks = grid_lons[(grid_lons > lons[0]) & (grid_lons < lons[1])]
+            panel_lat_ticks = grid_lats[(grid_lats > lats[0]) & (grid_lats < lats[1])]
+
+            ax.set_xticks(panel_lon_ticks, crs=pc)
+            ax.set_yticks(panel_lat_ticks, crs=pc)
+            ax.tick_params(axis='both', which='both',
+                           top=False, right=False, direction='out', labelsize=tick_fs)
+
+            if is_left:
+                # lat numbers + ylabel on all col-0 panels
+                ax.yaxis.set_major_formatter(LatitudeFormatter(number_format='.0f', degree_symbol='°'))
+                ax.set_ylabel("Latitude ($\degree$)", fontsize=label_fs)
+                if is_bottom:
+                    # lon numbers + xlabel on panel l only
+                    ax.xaxis.set_major_formatter(LongitudeFormatter(number_format='.0f', degree_symbol='°'))
+                    plt.setp(ax.get_xticklabels(), rotation=30, ha='right')
+                    ax.set_xlabel("Longitude ($\degree$)", fontsize=label_fs)
+                else:
+                    ax.xaxis.set_major_formatter(plt.NullFormatter())
+                    ax.set_xlabel('')
+            elif is_panel_m:
+                # lon numbers + xlabel on panel m; no lat numbers
+                ax.xaxis.set_major_formatter(LongitudeFormatter(number_format='.0f', degree_symbol='°'))
+                plt.setp(ax.get_xticklabels(), rotation=30, ha='right')
+                ax.set_xlabel("Longitude ($\degree$)", fontsize=label_fs)
+                ax.yaxis.set_major_formatter(plt.NullFormatter())
+                ax.set_ylabel('')
+            else:
+                # tick marks only, no numbers or axis labels
+                ax.xaxis.set_major_formatter(plt.NullFormatter())
+                ax.yaxis.set_major_formatter(plt.NullFormatter())
+                ax.set_xlabel('')
+                ax.set_ylabel('')
+
+            # add matching gridlines (same locs on all panels)
+            ax.gridlines(xlocs=grid_lons, ylocs=grid_lats,
+                         draw_labels=False,
+                         linewidth=0.5, color='white', alpha=0.5,
+                         linestyle='-', zorder=5)
+
+            # col 0: draw thick green box showing the tight zoom domain extent
+            if is_left:
+                ax.plot(
+                    [lons_conv[0], lons_conv[1], lons_conv[1], lons_conv[0], lons_conv[0]],
+                    [lats_conv[0], lats_conv[0], lats_conv[1], lats_conv[1], lats_conv[0]],
+                    color='limegreen', ls='--', lw=2.0, transform=pc, zorder=10
+                )
+
+    # ---- save ----------------------------------------------------------------
+    savepath = path_figures
+    os.makedirs(savepath, exist_ok=True)
+    outfile = savepath + 'combined_cold_pools_4_panel.png'
+    plt.savefig(outfile, dpi=300., bbox_inches='tight', pad_inches=0.3)
+    plt.close(fig)
+    print(f'Saved {outfile}')
+
+
 # %%

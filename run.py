@@ -33,8 +33,12 @@ synoptic_overview.combined_figure()
 
 # Figure 2
 # Plot evolution of southern and eastern convection and development of the cold pool
-synoptic_overview.combined_cold_pools()
 
+# original plot
+# synoptic_overview.combined_cold_pools()
+
+# new, streamlined plot
+synoptic_overview.combined_cold_pools_wide_ir_only()
 
 
 #%%
