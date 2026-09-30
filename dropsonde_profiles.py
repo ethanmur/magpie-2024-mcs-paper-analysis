@@ -30,7 +30,7 @@ import synoptic_overview
 
 def make_skewt(fig, subplot_spec, filepath, filename,
                panel_label=None, xlims=[15, 30], ylims=[1020, 680],
-               add_leg=True):
+               add_leg=True, xtick_step=None):
     """
     Build a Skew-T Log-P diagram on the given GridSpec subplot position.
 
@@ -43,6 +43,7 @@ def make_skewt(fig, subplot_spec, filepath, filename,
     panel_label  : single character for the upper-left panel label, e.g. 'b'
     xlims        : [Tmin, Tmax] temperature axis limits (deg C)
     ylims        : [pmax, pmin] pressure axis limits (hPa)
+    xtick_step   : if set, temperature tick spacing in deg C (e.g. 5)
 
     Returns
     -------
@@ -94,6 +95,9 @@ def make_skewt(fig, subplot_spec, filepath, filename,
     skew.ax.set_xlabel('Temperature (°C)', fontsize=label_fs)
     skew.ax.set_ylabel('Pressure (hPa)',        fontsize=label_fs)
     skew.ax.tick_params(axis='both', which='both', labelsize=tick_fs)
+    if xtick_step is not None:
+        skew.ax.set_xticks(np.arange(np.ceil(xlims[0] / xtick_step) * xtick_step,
+                                     xlims[1] + 1e-6, xtick_step))
     if add_leg:
         skew.ax.legend(fancybox=False, shadow=False,
                     facecolor='w', edgecolor='k', framealpha=1,
@@ -267,13 +271,14 @@ def cold_pool_first_dropsondes_goes():
         label_color='white')
 
     # --- panel (c): Skew-T dropsonde 4 ---------------------------------------
-    skew4 = make_skewt(fig, gs[1, 0], path_drops, sonde_4_file, panel_label='c', xlims=[15,29.95], ylims=[1020,680],
-                       add_leg=False)
+    skew4 = make_skewt(fig, gs[1, 0], path_drops, sonde_4_file, panel_label='c', xlims=[15,30], ylims=[1020,680],
+                       add_leg=False, xtick_step=5)
     skew4.ax.set_title('Dropsonde 4')
+    skew4.ax.xaxis.get_major_ticks()[-1].label1.set_visible(False)   # hide '30' (covered by wind barb)
 
     # --- panel (d): Skew-T dropsonde 6 ---------------------------------------
     skew6 = make_skewt(fig, gs[1, 1], path_drops, sonde_6_file, panel_label='d', ylims=[1020,680],
-                       add_leg=False)
+                       add_leg=False, xtick_step=5)
     skew6.ax.set_title('Dropsonde 6')
 
     # --- save -----------------------------------------------------------------

@@ -410,15 +410,18 @@ def test_plot(ds, channel='rgb', lats=[], lons=[], fill_with_ir=False,
                 c='cornflowerblue', label='ITCZ')
 
         # convection domain box
-        lonstemp = (-56.5, -51.5)
-        latstemp = (8, 13)
+        lonstemp = (-57., -51.)
+        latstemp = (6, 12)
         bx = [lonstemp[0], lonstemp[0], lonstemp[1], lonstemp[1], lonstemp[0]]
         by = [latstemp[0], latstemp[1], latstemp[1], latstemp[0], latstemp[0]]
         ax.plot(bx, by, color='limegreen', ls='--', linewidth=lw,
                 transform=ccrs.PlateCarree(), label='Domain 1')
 
-        lonstemp = (-60., -50)
-        latstemp = (6, 16)
+        # lonstemp = (-60., -50)
+        # latstemp = (6, 16)
+        lonstemp = (-59., -49)
+        latstemp = (4.5, 14)
+
         bx = [lonstemp[0], lonstemp[0], lonstemp[1], lonstemp[1], lonstemp[0]]
         by = [latstemp[0], latstemp[1], latstemp[1], latstemp[0], latstemp[0]]
         ax.plot(bx, by, color='w', ls='--', linewidth=lw, # crimson limegreen
@@ -615,15 +618,15 @@ def plot_sal_rgb(ax, fig, ds_syn, sal_ds, lats, lons,
 
     if draw_domain_boxes:
         lw = 2.
-        lonstemp = (-56.5, -51.5)
-        latstemp = (8, 13)
+        lonstemp = (-57., -51.)
+        latstemp = (6, 12)
         bx = [lonstemp[0], lonstemp[0], lonstemp[1], lonstemp[1], lonstemp[0]]
         by = [latstemp[0], latstemp[1], latstemp[1], latstemp[0], latstemp[0]]
         ax.plot(bx, by, color='limegreen', ls='--', linewidth=lw,
                 transform=ccrs.PlateCarree(), label='Domain 1', zorder=1000000.)
 
-        lonstemp = (-60., -50)
-        latstemp = (6, 16)
+        lonstemp = (-59., -49)
+        latstemp = (4.5, 14)
         bx = [lonstemp[0], lonstemp[0], lonstemp[1], lonstemp[1], lonstemp[0]]
         by = [latstemp[0], latstemp[1], latstemp[1], latstemp[0], latstemp[0]]
         ax.plot(bx, by, color='w', ls='--', linewidth=lw,
@@ -669,15 +672,18 @@ def plot_tpw(ax, fig, tpw_ds, lats, lons,
 
     # 2 domain boxes here
     lw = 2.
-    lonstemp = (-56.5, -51.5)
-    latstemp = (8, 13)
+    lonstemp = (-57., -51.)
+    latstemp = (6, 12)
     bx = [lonstemp[0], lonstemp[0], lonstemp[1], lonstemp[1], lonstemp[0]]
     by = [latstemp[0], latstemp[1], latstemp[1], latstemp[0], latstemp[0]]
     ax.plot(bx, by, color='limegreen', ls='--', linewidth=lw,
             transform=ccrs.PlateCarree(), label='Domain 1')
 
-    lonstemp = (-60., -50)
-    latstemp = (6, 16)
+    # lonstemp = (-60., -50)
+    # latstemp = (6, 16)
+    lonstemp = (-59., -49)
+    latstemp = (4.5, 14)
+
     bx = [lonstemp[0], lonstemp[0], lonstemp[1], lonstemp[1], lonstemp[0]]
     by = [latstemp[0], latstemp[1], latstemp[1], latstemp[0], latstemp[0]]
     ax.plot(bx, by, color='w', ls='--', linewidth=lw, # crimson limegreen
@@ -699,7 +705,10 @@ def combined_figure():
       All panels use the 18 UTC snapshot.
     """
     lons_syn  = (-70, -10);        lats_syn  = (0, 19)
-    lons_conv = (-56.5, -51.5);   lats_conv = (8, 13)
+    # lons_conv = (-56.5, -51.5);   lats_conv = (8, 13)
+
+    # lons_syn   = (-59,   -49);    lats_syn   = (4.5, 14.)   # cold pool domain (wider, left col)
+    lons_conv = (-57, -51);  lats_conv = (6, 12)   # tight convective zoom (center/right cols)
 
     path_data_syn  = str(path_project) + "/data/goes-level2-synoptic/"
     path_data_conv = str(path_project) + "/data/goes-level2-convection/"
@@ -1149,11 +1158,14 @@ def combined_cold_pools_wide_ir_only():
       - Lat/lon tick labels on col-0 only (bottom row for lon)
       - Cols 1 & 2: no tick labels
       - IR colorbar hanging off right edge of col-1, bottom row (panel m)
-      - Green box on col-0 panels showing lons_conv/lats_conv extent
+      - Green box on left-column panels showing lons_conv/lats_conv extent
     """
     # domain extents
     lons_cp   = (-60,   -50);    lats_cp   = (6, 16)   # cold pool domain (wider, left col)
     lons_conv = (-56.5, -51.5);  lats_conv = (8, 13)   # tight convective zoom (center/right cols)
+
+    lons_cp   = (-59,   -49);    lats_cp   = (4.5, 14.)   # cold pool domain (wider, left col)
+    lons_conv = (-57, -51);  lats_conv = (6, 12)   # tight convective zoom (center/right cols)
 
     # new path to relevant 4 snapshot files
     path_data = str(path_project) + "/data/goes-level2-cold pool-4-panels/"
@@ -1166,6 +1178,7 @@ def combined_cold_pools_wide_ir_only():
     print(f'Loading cold pool files: {cp_files}')
     ds_cp_list   = [data_subset(path_data, f, lats_cp,   lons_cp)   for f in cp_files]
     ds_conv_list = [data_subset(path_data, f, lats_conv, lons_conv) for f in cp_files]
+    assert n_times == n_rows * n_cols, f'expected 4 files, found {n_times}'
 
     # ---- figure sizing: width_ratios to match geographic aspect ratios ------
     asp_cp   = _panel_aspect(lons_cp,   lats_cp)
@@ -1174,7 +1187,7 @@ def combined_cold_pools_wide_ir_only():
     panel_h   = 2.5                       # inches per row
     w_cp      = panel_h * asp_cp          # width of col 0
     w_conv    = panel_h * asp_conv        # width of cols 1 & 2
-    fig_width  = w_cp + 2 * w_conv
+    fig_width  = 2 * w_cp * 1.08   # 2 equal columns + wspace
     fig_height = panel_h * n_rows
 
     print(f'CP asp: {asp_cp:.3f}  |  Conv asp: {asp_conv:.3f}')
@@ -1184,7 +1197,7 @@ def combined_cold_pools_wide_ir_only():
     fig = plt.figure(figsize=(fig_width, fig_height))
     gs  = GridSpec(n_rows, n_cols, figure=fig,
                    width_ratios=[w_cp, w_cp],
-                   hspace=0.05, wspace=0.08)
+                   hspace=0.06, wspace=0.10)
 
 
     # assign panel labels sequentially over active cells (row-major order)
@@ -1193,6 +1206,7 @@ def combined_cold_pools_wide_ir_only():
     cell_label = {cell: next(label_iter) for cell in active_cells}
 
     col_configs = [
+        ('ir',  lons_cp,   lats_cp,   ds_cp_list),
         ('ir',  lons_cp,   lats_cp,   ds_cp_list),
     ]
 
@@ -1209,14 +1223,14 @@ def combined_cold_pools_wide_ir_only():
     for col, (channel, lons, lats, ds_list) in enumerate(col_configs):
         for row in range(n_rows):
             ax  = fig.add_subplot(gs[row, col], projection=ccrs.PlateCarree())
-            ds  = ds_list[row]
+            ds  = ds_list[row * n_cols + col]   # row-major: 6Z, 12Z / 18Z, 0Z
             lbl = cell_label[(row, col)]
 
             is_left   = (col == 0)
             is_bottom = (row == n_rows - 1)
-            is_panel_m = (col == 1 and is_bottom)
+            is_panel_m = (col == 1 and is_bottom)   # right-column bottom panel
 
-            # IR colorbar on col-1 bottom row (panel m), padded from panel edge
+            # IR colorbar on both right-column panels, padded from panel edge
             show_cbar = (col == 1)
             cax = None
             if show_cbar:
@@ -1228,7 +1242,7 @@ def combined_cold_pools_wide_ir_only():
                       show_colorbar=show_cbar, cax=cax,
                       show_lat=False, show_lon=False,
                       show_title_banner=False,
-                      show_time=is_left,
+                      show_time=True,
                       panel_label=lbl,
                       label_x=0.06, label_y=0.94,
                       time_x=0.94, time_y=0.94)
@@ -1275,8 +1289,8 @@ def combined_cold_pools_wide_ir_only():
                          linewidth=0.5, color='white', alpha=0.5,
                          linestyle='-', zorder=5)
 
-            # col 0: draw thick green box showing the tight zoom domain extent
-            if is_left:
+            # draw thick green box showing the tight zoom domain extent (Figure 3)
+            if True:   # zoom domain shown on all four panels
                 ax.plot(
                     [lons_conv[0], lons_conv[1], lons_conv[1], lons_conv[0], lons_conv[0]],
                     [lats_conv[0], lats_conv[0], lats_conv[1], lats_conv[1], lats_conv[0]],
