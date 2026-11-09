@@ -1235,7 +1235,7 @@ def plot_tams_stats_nice(
     # ── save ─────────────────────────────────────────────────────────────
     path_figures = str(path_project) + '/figures/'
     os.makedirs(path_figures, exist_ok=True)
-    outfile = path_figures + f'tams_stats_nice_{mcs_id}.png'
+    outfile = path_figures + 'figure4.png' # f'tams_stats_nice_{mcs_id}.png'
     plt.savefig(outfile, dpi=300, bbox_inches='tight')
     plt.close(fig)
     print(f'Saved {outfile}')

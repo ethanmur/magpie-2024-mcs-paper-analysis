@@ -816,7 +816,7 @@ def combined_figure():
 
     # ---- save ----------------------------------------------------------------
     os.makedirs(path_figures, exist_ok=True)
-    outfile = path_figures + 'combined_overview.png'
+    outfile = path_figures + 'figure1.png'
     plt.savefig(outfile, dpi=170., bbox_inches='tight')
     plt.close(fig)
     print(f'Saved {outfile}')
@@ -1300,7 +1300,7 @@ def combined_cold_pools_wide_ir_only():
     # ---- save ----------------------------------------------------------------
     savepath = path_figures
     os.makedirs(savepath, exist_ok=True)
-    outfile = savepath + 'combined_cold_pools_4_panel.png'
+    outfile = savepath + 'figure2.png' # 'combined_cold_pools_4_panel.png'
     plt.savefig(outfile, dpi=300., bbox_inches='tight', pad_inches=0.3)
     plt.close(fig)
     print(f'Saved {outfile}')

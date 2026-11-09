@@ -505,6 +505,52 @@ def complete_partitions_contour(convective_axis_deg=None, per_leg=False, wind_un
             print(f'Saved {fname}')
 
 
+def complete_partitions_contour_nice():
+    """
+    Figure 8: per-leg percentile-contour CFADs of (a) TDR reflectivity and
+    (b) vertical velocity W, side by side, all passes overlaid in each panel
+    (colored per pass). Pass 1 is excluded from W (sparse sampling), as in
+    complete_partitions_contour(). Saved as figure8.png in the main figures dir.
+    """
+    os.makedirs(path_figures, exist_ok=True)
+
+    class_ds  = xr.open_dataset(CLASS_PATH + CLASS_FILE)
+    pass_data = [_load_pass(f, class_ds) for f in PASS_FILES]
+
+    knots       = 1.944
+    all_codes   = WEAK_STRAT_CODES + CONVECTIVE_CODES
+    all_colors  = ['steelblue', 'darkorange', 'firebrick']
+    label_fs    = plt.rcParams['axes.labelsize']
+
+    panels = [('REFLECTIVITY', 'TDR Reflectivity (dBZ)', 'a'),
+              ('W',            'Vertical Velocity W (kt)', 'b')]
+
+    fig, axs = plt.subplots(1, 2, figsize=(11, 5), sharey=True)
+    for ax, (var, label, letter) in zip(axs, panels):
+        pass_data_use = pass_data   if var == 'REFLECTIVITY' else pass_data[1:]
+        labels_use    = PASS_LABELS if var == 'REFLECTIVITY' else PASS_LABELS[1:]
+        colors_use    = all_colors  if var == 'REFLECTIVITY' else all_colors[1:]
+
+        for pd_, plabel, color in zip(pass_data_use, labels_use, colors_use):
+            values, level = _grouped_values([pd_], var, all_codes, None, None)
+            if var != 'REFLECTIVITY':
+                values = values * knots
+            _plot_cfad_contour(ax, values, level, label, color=color, name=plabel)
+
+        _dual_legend(ax, _color_key_legend(list(zip(labels_use, colors_use))))
+        ax.text(0.03, 0.96, f'({letter})', transform=ax.transAxes,
+                ha='left', va='top', fontsize=label_fs, zorder=20,
+                bbox=dict(facecolor='white', alpha=1., edgecolor='k',
+                          linewidth=1.2, pad=4))
+        if letter == 'b':
+            ax.set_ylabel('')
+
+    plt.tight_layout()
+    plt.savefig(path_figures + 'figure8.png', dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    print('Saved figure8.png')
+
+
 # ---------------------------------------------------------------------------
 # Flight-level distributions by TDR precipitation classification
 # ---------------------------------------------------------------------------
@@ -691,8 +737,8 @@ def complete_flightlevel_partitions(match_method='curtain', resolution='downscal
 
 def complete_flightlevel_partitions_nice():
     """
-    2x2 publication-style figure: relative humidity, mixing ratio,
-    temperature, and theta-e distributions (weak/stratiform vs. convective),
+    2x3 publication-style figure: W, mixing ratio, temperature,
+    theta-e, and relative humidity distributions (legend in 6th cell) (weak/stratiform vs. convective),
     using curtain matching + upscaled (native 1 Hz) resolution. Saved
     directly to the main figures directory as flightlevel_dists_nice.png.
     """
@@ -712,12 +758,16 @@ def complete_flightlevel_partitions_nice():
         ('MR.d',      'Mixing Ratio (g kg$^{-1}$)'),
         ('TA.d',      'Air Temperature (°C)'),
         ('THETAE.d',  'Equivalent Potential Temperature (K)'),
+        ('RH',        'Relative Humidity (%)'),
     ]
-    panel_letters = ['c', 'd', 'e', 'f']
+    panel_letters = ['c', 'd', 'e', 'f', 'g']
+    the_recalc, rh_recalc = flightlevel_rh_thetae(fl)   # recomputed from T, MR, p
 
-    fig, axs = plt.subplots(2, 2, figsize=(10, 8))
+    fig, axs = plt.subplots(2, 3, figsize=(14.5, 8))
     for ax, (var, label), letter in zip(axs.flat, variables, panel_letters):
-        data = fl[var].values
+        data = {'THETAE.d': the_recalc, 'RH': rh_recalc}.get(var)
+        if data is None:
+            data = fl[var].values
         if var == 'HUM_REL.d':
             # sensor noise pushes some readings slightly above 100% —
             # physically impossible, so cap (round down) at 100%
@@ -732,11 +782,227 @@ def complete_flightlevel_partitions_nice():
                ha='left', va='top', fontsize=13, zorder=20,
                bbox=dict(facecolor='white', alpha=1., edgecolor='k',
                          linewidth=1.2, pad=4))
-        if letter in ('d', 'f'):
+        if letter == 'g':
+            ax.set_ylim(0, 1.)   # RH piles up near 100% in convection
+        if letter in ('d', 'e', 'g'):
             ax.set_ylabel('')
 
-    axs.flat[0].legend(framealpha=1.)
+    # 6th cell: legend only
+    ax_leg = axs.flat[5]
+    ax_leg.axis('off')
+    handles, labels = axs.flat[0].get_legend_handles_labels()
+    ax_leg.legend(handles, labels, loc='center', fontsize=13, framealpha=1.)
     plt.tight_layout()
-    plt.savefig(path_figures + 'flightlevel_dists_nice.png', dpi=300, bbox_inches='tight')
+    plt.savefig(path_figures + 'figure10_fl_dists.png', dpi=300, bbox_inches='tight')
     plt.close(fig)
     print('Saved flightlevel_dists_nice.png')
+
+
+# ---------------------------------------------------------------------------
+# Buffer zone vs. SAL flight-level analysis
+# ---------------------------------------------------------------------------
+
+# decimal-hour UTC windows (placeholders; adjust as needed)
+BUFFER_WINDOWS = [(19.4, 19.52), (19.825, 19.9)]
+SAL_WINDOWS    = [(19.52, 19.825)]
+FL_PRES_VAR    = 'PS.c'   # corrected flight-level static pressure (mb); only in the full file
+FL_FULL_FILE   = '20240715I1_A.nc'
+BUFFER_COLOR   = 'tab:orange'
+SAL_COLOR      = 'saddlebrown'
+
+
+def flightlevel_rh_thetae(fl):
+    """
+    Recompute (theta_e [K], RH [%]) from flight-level T (TA.d, degC), water vapor
+    mixing ratio (MR.d, g/kg) and static pressure (FL_PRES_VAR, hPa), rather than
+    using the file's HUM_REL.d / THETAE.d. RH is capped at 100%.
+    """
+    import metpy.calc as mpcalc
+    from metpy.units import units
+
+    if FL_PRES_VAR in fl.variables:
+        p_vals = fl[FL_PRES_VAR].values
+    else:
+        # the _small file drops flight-level pressure; pull it from the full file
+        # (same 1 Hz time axis, so arrays line up sample-for-sample)
+        full = xr.open_dataset(FLIGHT_LEVEL_PATH + FL_FULL_FILE, decode_times=False)
+        p_vals = full[FL_PRES_VAR].values
+        assert p_vals.shape == fl['TA.d'].values.shape, 'full/small file lengths differ'
+    p = p_vals * units.hPa
+    T = fl['TA.d'].values * units.degC
+    w = (fl['MR.d'].values / 1000.) * units.dimensionless
+
+    rh  = mpcalc.relative_humidity_from_mixing_ratio(p, T, w).to('percent').m
+    Td  = mpcalc.dewpoint(mpcalc.vapor_pressure(p, w))
+    the = mpcalc.equivalent_potential_temperature(p, T, Td).to('K').m
+    return the, np.clip(rh, None, 100.)
+
+
+def _window_mask(fl_time, windows):
+    mask = np.zeros(fl_time.shape, dtype=bool)
+    for t0, t1 in windows:
+        mask |= (fl_time >= t0) & (fl_time < t1)
+    return mask
+
+
+def flightlevel_buffer_sal_dists():
+    """
+    Same layout as complete_flightlevel_partitions_nice(), but comparing
+    buffer-zone and SAL distributions (bold), with the convective
+    distribution as a faint reference line. Saves flightlevel_dists_nice_sal.png.
+    """
+    os.makedirs(path_figures, exist_ok=True)
+
+    fl = xr.open_dataset(FLIGHT_LEVEL_PATH + FLIGHT_LEVEL_FILE, decode_times=False)
+    fl_time = build_time_array(fl, axis_type='decimal')
+
+    class_time, class_codes = _curtain_classification()
+    _, codes_upscaled = _upscale_to_flight_resolution(class_time, class_codes, fl_time)
+    cv_mask  = np.isin(codes_upscaled, CONVECTIVE_CODES)
+    buf_mask = _window_mask(fl_time, BUFFER_WINDOWS)
+    sal_mask = _window_mask(fl_time, SAL_WINDOWS)
+
+    variables = [
+        ('UWZ.d',     'Vertical Velocity W (m s$^{-1}$)'),
+        ('MR.d',      'Mixing Ratio (g kg$^{-1}$)'),
+        ('TA.d',      'Air Temperature (°C)'),
+        ('THETAE.d',  'Equivalent Potential Temperature (K)'),
+        ('RH',        'Relative Humidity (%)'),
+    ]
+    panel_letters = ['c', 'd', 'e', 'f', 'g']
+    the_recalc, rh_recalc = flightlevel_rh_thetae(fl)
+
+    # 2 rows x 3 columns: 5 distributions + legend in the 6th cell
+    fig, axs = plt.subplots(2, 3, figsize=(14.5, 8))
+    for ax, (var, label), letter in zip(axs.flat, variables, panel_letters):
+        data = {'THETAE.d': the_recalc, 'RH': rh_recalc}.get(var)   # recomputed theta_e / RH
+        if data is None:
+            data = fl[var].values
+        finite = data[buf_mask | sal_mask | cv_mask]
+        finite = finite[np.isfinite(finite)]
+        bins = np.linspace(np.nanmin(finite), np.nanmax(finite), 40)
+        centers = 0.5 * (bins[:-1] + bins[1:])
+
+        for mask, color, name, lw, alpha in [
+                (cv_mask,  'dimgray',    'Convective (reference)', 0.8, 1.),
+                (buf_mask, BUFFER_COLOR, 'Buffer zone',           1.8, 1.),
+                (sal_mask, SAL_COLOR,    'SAL',                   1.8, 1.)]:
+            vals = data[mask]
+            vals = vals[np.isfinite(vals)]
+            if vals.size == 0:
+                continue
+            hist, _ = np.histogram(vals, bins=bins)
+            ax.plot(centers, hist / hist.sum(), color=color, lw=lw,
+                    alpha=alpha, label=name)
+
+        ax.set_xlabel(label, fontsize=13, labelpad=10)
+        ax.set_ylabel('Probability', fontsize=13, labelpad=10)
+        ax.tick_params(axis='both', labelsize=11)
+        ax.text(0.03, 0.96, f'({letter})', transform=ax.transAxes,
+                ha='left', va='top', fontsize=13, zorder=20,
+                bbox=dict(facecolor='white', alpha=1., edgecolor='k',
+                          linewidth=1.2, pad=4))
+        if letter in ('d', 'e', 'g'):
+            ax.set_ylabel('')
+
+    # 6th cell: legend only
+    ax_leg = axs.flat[5]
+    ax_leg.axis('off')
+    handles, labels = axs.flat[0].get_legend_handles_labels()
+    ax_leg.legend(handles, labels, loc='center', fontsize=13, framealpha=1.)
+    plt.tight_layout()
+    plt.savefig(path_figures + 'figure11_fl_dists.png', dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    print('Saved flightlevel_dists_nice_sal.png')
+
+
+def flightlevel_buffer_sal_timeseries(t_start=19 + 20 / 60, t_end=20.0):
+    """
+    Flight-level time series in the style of convective_mixing(): (h) U/V/W,
+    (i) WVMR + temperature, (j) theta-e + RH. Buffer-zone and SAL boundaries
+    are marked with colored vertical lines. Only dropsondes 17, 18, 21 are shown.
+    Saves flightlevel_timeseries_sal.png.
+    """
+    from dropsonde_profiles import _plot_fl_timeseries
+
+    os.makedirs(path_figures, exist_ok=True)
+    fl = xr.open_dataset(FLIGHT_LEVEL_PATH + FLIGHT_LEVEL_FILE, decode_times=False)
+    fl_time = build_time_array(fl, axis_type='decimal')
+
+    w, u, v = fl['UWZ.d'].values, fl['UWX.d'].values, fl['UWY.d'].values
+    mr, ta  = fl['MR.d'].values,  fl['TA.d'].values
+    the, rh = flightlevel_rh_thetae(fl)   # recomputed from T, MR, p
+    sondes  = (17, 18, 21)
+
+    label_fs = plt.rcParams['axes.labelsize']
+    fig, (ax_g, ax_h, ax_i) = plt.subplots(3, 1, figsize=(10.5, 8))
+
+    _plot_fl_timeseries(
+        ax_g, fl_time, var_left=u,
+        label_left='Wind components (m s$^{-1}$)', legend_label_left='U',
+        color_left='steelblue',
+        extra_vars=[(v, 'V', 'tomato'), (w, 'W', 'k')],
+        t_start=t_start, t_end=t_end, panel_label='h', sonde_ids=sondes)
+    ax_g.set_ylim([-6, 12])
+
+    _plot_fl_timeseries(
+        ax_h, fl_time, var_left=mr,
+        label_left='WVMR (g kg$^{-1}$)', color_left='royalblue',
+        var_right=ta, label_right='Temperature (°C)', color_right='firebrick',
+        t_start=t_start, t_end=t_end, panel_label='i', add_leg=False,
+        sonde_ids=sondes)
+
+    _plot_fl_timeseries(
+        ax_i, fl_time, var_left=the,
+        label_left='$\\theta_e$ (K)', color_left='darkgreen',
+        var_right=rh, label_right='Relative Humidity (%)', color_right='purple',
+        t_start=t_start, t_end=t_end, panel_label='j', add_leg=False,
+        sonde_ids=sondes)
+    ax_i.set_ylim([320, 350])
+    ax_i.set_xlabel('Time (Hours, UTC)', fontsize=label_fs)
+
+    # boundaries of buffer-zone / SAL segments (SAL drawn last so it sits on top)
+    for ax in (ax_g, ax_h, ax_i):
+        for windows, color in [(BUFFER_WINDOWS, BUFFER_COLOR), (SAL_WINDOWS, SAL_COLOR)]:
+            for t0, t1 in windows:
+                for tb in (t0, t1):
+                    ax.axvline(tb, color=color, lw=2, zorder=1)   # behind data lines
+
+    plt.tight_layout()
+    plt.savefig(path_figures + 'figure11_fl_ts.png', dpi=300,
+                bbox_inches='tight', pad_inches=0.4)
+    plt.close(fig)
+    print('Saved flightlevel_timeseries_sal.png')
+
+
+def flightlevel_dists_spatial():
+    """
+    Flight track (lon/lat) colored by segment: buffer zone, SAL, and other.
+    Saves flightlevel_dists_spatial.png.
+    """
+    os.makedirs(path_figures, exist_ok=True)
+    fl = xr.open_dataset(FLIGHT_LEVEL_PATH + FLIGHT_LEVEL_FILE, decode_times=False)
+    fl_time = build_time_array(fl, axis_type='decimal')
+    lon, lat = fl['LONref'].values, fl['LATref'].values
+
+    buf_mask = _window_mask(fl_time, BUFFER_WINDOWS)
+    sal_mask = _window_mask(fl_time, SAL_WINDOWS)
+    in_range = (fl_time >= 19.2) & (fl_time <= 20.0)
+    other    = in_range & ~buf_mask & ~sal_mask
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+    for mask, color, name, lw in [(other,    'lightgray',  'Other (19.2-20 UTC)', 1.5),
+                                  (buf_mask, BUFFER_COLOR, 'Buffer zone',         2.5),
+                                  (sal_mask, SAL_COLOR,    'SAL',                 2.5)]:
+        # NaN-out other segments so separate legs don't get joined by a line
+        ax.plot(np.where(mask, lon, np.nan), np.where(mask, lat, np.nan),
+                color=color, lw=lw, label=name)
+    ax.set_xlabel('Longitude ($\\degree$)', fontsize=13)
+    ax.set_ylabel('Latitude ($\\degree$)', fontsize=13)
+    ax.set_aspect('equal')
+    ax.grid(alpha=0.3)
+    ax.legend(framealpha=1.)
+    plt.tight_layout()
+    plt.savefig(path_figures + 'flightlevel_dists_spatial.png', dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    print('Saved flightlevel_dists_spatial.png')

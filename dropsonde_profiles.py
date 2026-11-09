@@ -283,7 +283,7 @@ def cold_pool_first_dropsondes_goes():
 
     # --- save -----------------------------------------------------------------
     os.makedirs(path_figures, exist_ok=True)
-    outfile = path_figures + 'cold_pool_thermo.png'
+    outfile = path_figures + 'figure5.png' # 'cold_pool_thermo.png'
     plt.savefig(outfile, dpi=300., bbox_inches='tight')
     plt.close(fig)
     plt.rcParams.update(_orig_rc)
@@ -475,7 +475,7 @@ def composite_plots():
 
     # --- save ----------------------------------------------------------------
     os.makedirs(path_figures, exist_ok=True)
-    outfile = path_figures + 'composite_dropsondes.png'
+    outfile = path_figures + 'figure10_dropsondes.png'
     plt.savefig(outfile, dpi=300., bbox_inches='tight', pad_inches=0.4)
     plt.close(fig)
     print(f'Saved {outfile}')
@@ -551,16 +551,17 @@ def sal():
     fl_data  = xr.open_dataset(path_fl + fl_file, decode_times=False)
     fl_time  = build_time_array(fl_data, axis_type='decimal')  # decimal UTC hours
 
-    rh  = fl_data['HUM_REL.d'].values
+    import kinematic_partitions as kp
+    _, rh = kp.flightlevel_rh_thetae(fl_data)   # RH recomputed from T, MR, p (capped at 100%)
     lat = fl_data['LATref'].values
     lon = fl_data['LONref'].values
 
     # trim to relevant flight times
-    t_start, t_end = 18.8, 20.5
+    t_start, t_end = 18.8, 20.3
     time_mask = (fl_time >= t_start) & (fl_time <= t_end)
 
     # subsample to ~every 2 minutes at 1 Hz → every 120 points
-    subsample = 60 # 120
+    subsample = 5   # every 5 s (was 60 s, which left visible gaps along the track)
     idx_full = np.where(time_mask)[0]
     idx_sub  = idx_full[::subsample]
 
@@ -609,8 +610,30 @@ def sal():
     # flight-level RH scatter
     sc = ax_goes.scatter(lon_sub[valid], lat_sub[valid], c=rh_sub[valid],
                          cmap='RdYlBu', vmin=0, vmax=100,
-                         s=36, zorder=10, transform=pc,
+                         s=12, zorder=10, transform=pc,
                          edgecolors='none')
+
+    # lines perpendicular to the flight track at buffer-zone / SAL boundaries
+    half_len = 0.12   # half-length of each line (deg lat)
+    for t_b, color in ([(t, kp.BUFFER_COLOR) for w in kp.BUFFER_WINDOWS for t in w] +
+                       [(t, kp.SAL_COLOR)    for w in kp.SAL_WINDOWS    for t in w]):
+        i0 = int(np.searchsorted(fl_time, t_b))
+        sl = slice(max(i0 - 30, 0), i0 + 30)   # +/- 30 s for local heading
+        lo, la = lon[sl], lat[sl]
+        ok = np.isfinite(lo) & np.isfinite(la)
+        if ok.sum() < 2:
+            continue
+        lo, la = lo[ok], la[ok]
+        c = np.cos(np.deg2rad(la.mean()))
+        dx, dy = (lo[-1] - lo[0]) * c, la[-1] - la[0]
+        nrm = np.hypot(dx, dy)
+        if nrm == 0:
+            continue
+        px, py = -dy / nrm, dx / nrm          # unit vector perpendicular to track
+        lo_c, la_c = lon[i0], lat[i0]
+        ax_goes.plot([lo_c - half_len * px / c, lo_c + half_len * px / c],
+                     [la_c - half_len * py,     la_c + half_len * py],
+                     color=color, lw=2, transform=pc, zorder=60)
 
     # colorbar to the right of panel (a)
     label_fs = plt.rcParams['axes.labelsize']
@@ -643,7 +666,7 @@ def sal():
 
     # --- save ----------------------------------------------------------------
     os.makedirs(path_figures, exist_ok=True)
-    outfile = path_figures + 'sal.png'
+    outfile = path_figures + 'figure11_sal.png'
     plt.savefig(outfile, dpi=300., bbox_inches='tight', pad_inches=0.4)
     plt.close(fig)
     print(f'Saved {outfile}')
@@ -755,7 +778,7 @@ def outflow():
 
     # --- save ----------------------------------------------------------------
     os.makedirs(path_figures, exist_ok=True)
-    outfile = path_figures + 'outflow_profiles.png'
+    outfile = path_figures + 'figure13.png'
     plt.savefig(outfile, dpi=300., bbox_inches='tight', pad_inches=0.4)
     plt.close(fig)
     print(f'Saved {outfile}')
@@ -766,7 +789,7 @@ def _plot_fl_timeseries(ax, fl_time, var_left, label_left, color_left,
                         var_right=None, label_right=None, color_right=None,
                         extra_vars=None,
                         t_start=19.125, t_end=19.45,
-                        panel_label=None, add_leg=True):
+                        panel_label=None, add_leg=True, sonde_ids=None):
     """
     Plot one or two flight-level variables vs decimal UTC time on a shared
     x-axis.  A second y-axis is added on the right when var_right is given.
@@ -787,6 +810,7 @@ def _plot_fl_timeseries(ax, fl_time, var_left, label_left, color_left,
     extra_vars        : list of (array, legend_label, color) for left axis
     t_start/end       : UTC decimal hour limits for x-axis
     panel_label       : single character drawn in upper-left corner
+    sonde_ids         : if given, only mark these dropsonde indices (default: all)
     """
     label_fs = plt.rcParams['axes.labelsize']
     tick_fs  = plt.rcParams['xtick.labelsize']
@@ -843,8 +867,9 @@ def _plot_fl_timeseries(ax, fl_time, var_left, label_left, color_left,
                         ncol=1)
 
     # panel label — matching bbox style used in make_skewt()
+    # (drawn on the twin axis when present so it sits atop the right-axis line)
     if panel_label is not None:
-        ax.text(0.01, 0.92, f'({panel_label})', transform=ax.transAxes,
+        (ax_r if ax_r is not None else ax).text(0.01, 0.92, f'({panel_label})', transform=ax.transAxes,
                 fontsize=label_fs,
                 va='top', ha='left',
                 bbox=dict(facecolor='white', alpha=1.,
@@ -862,6 +887,9 @@ def _plot_fl_timeseries(ax, fl_time, var_left, label_left, color_left,
         timestamp = pd.Timestamp(launch_time)    
         # Calculate decimal hour
         decimal_hour = timestamp.hour + timestamp.minute / 60 + timestamp.second / 3600
+
+        if sonde_ids is not None and li not in sonde_ids:
+            continue
 
         # Only plot if the dropsonde is within the current x-axis limits
         if t_start <= decimal_hour <= t_end:
@@ -934,6 +962,8 @@ def convective_mixing():
     u   = fl_data['UWX.d'].values   # u wind component   (m/s)
     v   = fl_data['UWY.d'].values   # v wind component   (m/s)
     mr  = fl_data['MR.d'].values    # mixing ratio       (g/kg)
+    import kinematic_partitions as kp
+    the, rh = kp.flightlevel_rh_thetae(fl_data)   # recomputed theta_e (K), RH (%)
     ta  = fl_data['TA.d'].values    # ambient temperature (°C)
 
     # --- figure sizing -------------------------------------------------------
@@ -943,11 +973,11 @@ def convective_mixing():
     ts_height    = 2.5          # height of each time-series row
 
     fig_width  = skewt_width * 3
-    fig_height = panel_height + 2 * ts_height
+    fig_height = panel_height + 3 * ts_height
     fig = plt.figure(figsize=(fig_width, fig_height))
 
-    gs = GridSpec(3, 3, figure=fig,
-                  height_ratios=[panel_height, ts_height, ts_height],
+    gs = GridSpec(4, 3, figure=fig,
+                  height_ratios=[panel_height, ts_height, ts_height, ts_height],
                   wspace=0.40, hspace=0.30)
 
     label_fs = plt.rcParams['axes.labelsize']
@@ -1028,12 +1058,28 @@ def convective_mixing():
         panel_label='e',
         add_leg=False
     )
-    ax_e.set_xlabel('Time (Hours, UTC)', fontsize=label_fs)
     ax_e.set_ylim([8,16])
+
+    # --- panel (f): theta-e + relative humidity ------------------------------
+    ax_f = fig.add_subplot(gs[3, :])   # span all 3 columns
+    _plot_fl_timeseries(
+        ax_f, fl_time,
+        var_left=the,
+        label_left='$\\theta_e$ (K)',
+        color_left='darkgreen',
+        var_right=rh,
+        label_right='Relative Humidity (%)',
+        color_right='purple',
+        t_start=t_start_fl, t_end=t_end_fl,
+        panel_label='f',
+        add_leg=False
+    )
+    ax_f.set_ylim([340, 360])
+    ax_f.set_xlabel('Time (Hours, UTC)', fontsize=label_fs)
 
     # --- save ----------------------------------------------------------------
     os.makedirs(path_figures, exist_ok=True)
-    outfile = path_figures + 'convective_mixing.png'
+    outfile = path_figures + 'figure12.png'
     plt.savefig(outfile, dpi=300., bbox_inches='tight', pad_inches=0.4)
     plt.close(fig)
     print(f'Saved {outfile}')
