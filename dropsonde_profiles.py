@@ -115,6 +115,34 @@ def make_skewt(fig, subplot_spec, filepath, filename,
     return skew
 
 
+def _axbt_launch_locations():
+    """(lons, lats) of AXBT launches, parsed from the data/axbt/*.dat headers.
+    The launch line looks like: '20240715 162032  10.932  -59.126 N43RF ...'
+    (files have CR-CR-LF line endings, so blank lines are skipped)."""
+    path_axbt = str(path_project) + "/data/axbt/"
+    lons_ax, lats_ax = [], []
+    for f in sorted(os.listdir(path_axbt)):
+        if not f.endswith('.dat'):
+            continue
+        with open(path_axbt + f) as fh:
+            for line in fh:
+                parts = line.split()
+                if len(parts) >= 4 and len(parts[0]) == 8 and parts[0].isdigit():
+                    lats_ax.append(float(parts[2]))
+                    lons_ax.append(float(parts[3]))
+                    break
+    return lons_ax, lats_ax
+
+
+def _plot_axbt_launches(ax, lons, lats, pc):
+    """Red x at each AXBT launch inside the (lons, lats) domain."""
+    lons_ax, lats_ax = _axbt_launch_locations()
+    for lo, la in zip(lons_ax, lats_ax):
+        if lons[0] <= lo <= lons[1] and lats[0] <= la <= lats[1]:
+            ax.scatter(lo, la, c='r', marker='x', s=80, linewidths=2.,
+                       transform=pc, zorder=150)   # above dropsonde dots (zorder 100 in overlay_flight_data)
+
+
 # ---------------------------------------------------------------------------
 # Figure 1: intro overview — GOES + flight track + dropsonde locations
 # ---------------------------------------------------------------------------
@@ -197,6 +225,8 @@ def goes_flight_overview():
                              transform=pc, zorder=7)
         except Exception:
             pass
+
+    _plot_axbt_launches(ax_a, lons, lats, pc)
 
     os.makedirs(path_figures, exist_ok=True)
     outfile = path_figures + 'figure1.png'
@@ -281,7 +311,11 @@ def cold_pool_first_dropsondes_goes():
         fl_interval_min=5,
         linec='k',
         drop_fs=13,
-        label_color='white')
+        label_color='white',
+        dot_color='white')
+
+    # AXBT launches as red x
+    _plot_axbt_launches(ax_a, lons, lats, pc)
 
     # --- panel (b): Skew-T dropsonde 4 ---------------------------------------
     skew4 = make_skewt(fig, gs[0, 1], path_drops, sonde_4_file, panel_label='b', xlims=[15,30], ylims=[1020,680],
@@ -434,7 +468,7 @@ def make_composite_skewt(fig, subplot_spec, p_mean, T_mean, Td_mean,
 
 
 # ---------------------------------------------------------------------------
-# Figure 7: composite Skew-Ts for stratiform and convective dropsondes
+# Figure 11: composite Skew-Ts for stratiform and convective dropsondes
 # ---------------------------------------------------------------------------
 
 # make composite plots for all stratiform and convective dropsondes, as IDed by the TDR!
@@ -443,12 +477,12 @@ def make_composite_skewt(fig, subplot_spec, p_mean, T_mean, Td_mean,
 # convective: 9, 16, 24
 def composite_plots():
     """
-    Figure 7: 1 x 2 Skew-T composite layout.
+    Figure 11: 1 x 2 Skew-T composite layout.
       (a) Stratiform dropsonde composite  (indices 8, 14, 15, 17, 22, 23, 25)
       (b) Convective dropsonde composite  (indices 9, 16, 24)
 
     Each panel shows individual sonde profiles (thin, semi-transparent) behind
-    the composite mean (thick, opaque).  Saves to figures/composite_dropsondes.png
+    the composite mean (thick, opaque).  Saves to figures/figure11.png
     """
     strat_indices = [8, 14, 15, 17, 22, 23, 25]
     conv_indices  = [9, 16, 24]
@@ -488,7 +522,7 @@ def composite_plots():
 
     # --- save ----------------------------------------------------------------
     os.makedirs(path_figures, exist_ok=True)
-    outfile = path_figures + 'figure11_dropsondes.png'
+    outfile = path_figures + 'figure11.png'
     plt.savefig(outfile, dpi=300., bbox_inches='tight', pad_inches=0.4)
     plt.close(fig)
     print(f'Saved {outfile}')
@@ -524,20 +558,24 @@ def build_time_array(data, axis_type='decimal'):
 
 
 # ---------------------------------------------------------------------------
-# Figure 8: GOES + flight-level RH | Skew-T sonde 18 | SAL composite
+# Figure 13: SAL structure — GOES + flight-level RH | Skew-Ts | FL time series
 # ---------------------------------------------------------------------------
 
 def sal():
     """
-    Figure 8: 1 x 3 layout.
+    Figure 13: 4-row layout (same structure as convective_mixing()).
+      Row 0:
       (a) GOES-16 RGB (goes-level2-tdr index 1, ~19:00 UTC) overlaid with
           flight-level relative humidity scatter (18:30–19:30 UTC, ~2-min
           subsampling) and dropsonde-18 location marker.
           Colorbar for RH plotted to the right of panel (a).
       (b) Skew-T of dropsonde index 18 (from dropsondes/ folder).
       (c) Composite Skew-T of SAL dropsondes (indices 0,1,2,27,28,29,30).
+      Rows 1-3 (full width, 19:20-20:00 UTC; buffer-zone / SAL boundaries as
+      colored vertical lines, dropsondes 17, 18, 21 marked):
+      (d) U/V/W   (e) WVMR + temperature   (f) theta-e + RH
 
-    Saves to figures/figure_8.png
+    Saves to figures/figure13.png
     """
     lons = (-55.5, -52.5)
     lats = (9,     12.5)
@@ -594,17 +632,13 @@ def sal():
      p_sal_all, T_sal_all, Td_sal_all) = _composite_helper(all_data, sal_indices,)
 
     # --- figure sizing -------------------------------------------------------
-    asp          = synoptic_overview._panel_aspect(lons, lats)
-    panel_height = 4.5
-    goes_width   = panel_height * asp
-    skewt_width  = panel_height
+    panel_height = 3.5          # top-row panel height (inches)
+    ts_height    = 2.5          # height of each time-series row
+    fig = plt.figure(figsize=(panel_height * 3, panel_height + 3 * ts_height))
 
-    fig_width = goes_width + 2 * skewt_width
-    fig = plt.figure(figsize=(fig_width, panel_height))
-
-    gs = GridSpec(1, 3, figure=fig,
-                  width_ratios=[goes_width, skewt_width, skewt_width],
-                  wspace=0.55)
+    gs = GridSpec(4, 3, figure=fig,
+                  height_ratios=[panel_height, ts_height, ts_height, ts_height],
+                  wspace=0.40, hspace=0.30)
 
     # --- panel (a): GOES RGB + flight-level RH scatter -----------------------
     pc      = ccrs.PlateCarree()
@@ -677,21 +711,64 @@ def sal():
                                     title='SAL Composite',
                                     xlims=[-15, 30], ylims=[1020, 360])
 
+    # --- time series (rows 1-3): from 19:20 to 20:00 UTC --------------------
+    t0_ts, t1_ts = 19 + 20 / 60, 20.0
+    sondes_ts = (17, 18, 21)
+    w_fl, u_fl, v_fl = (fl_data['UWZ.d'].values, fl_data['UWX.d'].values,
+                        fl_data['UWY.d'].values)
+    mr_fl, ta_fl = fl_data['MR.d'].values, fl_data['TA.d'].values
+    the_fl, rh_fl = kp.flightlevel_rh_thetae(fl_data)
+
+    ax_d = fig.add_subplot(gs[1, :])
+    _plot_fl_timeseries(
+        ax_d, fl_time, var_left=u_fl,
+        label_left='Wind components (m s$^{-1}$)', legend_label_left='U',
+        color_left='steelblue',
+        extra_vars=[(v_fl, 'V', 'tomato'), (w_fl, 'W', 'k')],
+        t_start=t0_ts, t_end=t1_ts, panel_label='d', sonde_ids=sondes_ts)
+    ax_d.set_ylim([-6, 12])
+
+    ax_e = fig.add_subplot(gs[2, :])
+    _plot_fl_timeseries(
+        ax_e, fl_time, var_left=mr_fl,
+        label_left='WVMR (g kg$^{-1}$)', color_left='royalblue',
+        var_right=ta_fl, label_right='Temperature (°C)', color_right='firebrick',
+        t_start=t0_ts, t_end=t1_ts, panel_label='e', add_leg=False,
+        sonde_ids=sondes_ts)
+
+    ax_f = fig.add_subplot(gs[3, :])
+    _plot_fl_timeseries(
+        ax_f, fl_time, var_left=the_fl,
+        label_left='$\\theta_e$ (K)', color_left='darkgreen',
+        var_right=rh_fl, label_right='Relative Humidity (%)', color_right='purple',
+        t_start=t0_ts, t_end=t1_ts, panel_label='f', add_leg=False,
+        sonde_ids=sondes_ts)
+    ax_f.set_ylim([320, 350])
+    ax_f.set_xlabel('Time (Hours, UTC)', fontsize=label_fs)
+
+    # buffer-zone / SAL boundaries as vertical lines (behind the data lines)
+    for ax_ts in (ax_d, ax_e, ax_f):
+        for windows, color in [(kp.BUFFER_WINDOWS, kp.BUFFER_COLOR),
+                               (kp.SAL_WINDOWS,    kp.SAL_COLOR)]:
+            for w0, w1 in windows:
+                for tb in (w0, w1):
+                    ax_ts.axvline(tb, color=color, lw=2, zorder=1)
+
     # --- save ----------------------------------------------------------------
     os.makedirs(path_figures, exist_ok=True)
-    outfile = path_figures + 'figure12_sal.png'
+    outfile = path_figures + 'figure13.png'
     plt.savefig(outfile, dpi=300., bbox_inches='tight', pad_inches=0.4)
     plt.close(fig)
     print(f'Saved {outfile}')
 
 
 # ---------------------------------------------------------------------------
-# Figure 10: 2 x 2 — GOES | Skew-T 26 // Skew-T 21 | Skew-T 22
+# Figure 15: 2 x 2 — GOES | Skew-T 26 // Skew-T 21 | Skew-T 22
 # ---------------------------------------------------------------------------
 
 def outflow():
     """
-    Figure 10: 2 x 2 layout.
+    Figure 15: 2 x 2 layout.
       (a) upper-left  : GOES-16 RGB (last file in goes-level2-tdr) with white
                         markers for dropsonde locations 21, 22, and 26.
       (b) upper-right : Skew-T of dropsonde index 26.
@@ -791,7 +868,7 @@ def outflow():
 
     # --- save ----------------------------------------------------------------
     os.makedirs(path_figures, exist_ok=True)
-    outfile = path_figures + 'figure14.png'
+    outfile = path_figures + 'figure15.png'
     plt.savefig(outfile, dpi=300., bbox_inches='tight', pad_inches=0.4)
     plt.close(fig)
     print(f'Saved {outfile}')
@@ -919,12 +996,12 @@ def _plot_fl_timeseries(ax, fl_time, var_left, label_left, color_left,
 
 
 # ---------------------------------------------------------------------------
-# Figure 9: 3-row — GOES+Skew-Ts (top) | FL w/u/v (middle) | FL WVMR/T (bottom)
+# Figure 14: 3-row — GOES+Skew-Ts (top) | FL w/u/v (middle) | FL WVMR/T (bottom)
 # ---------------------------------------------------------------------------
 
 def convective_mixing():
     """
-    Figure 9: 3-row layout.
+    Figure 14: 3-row layout.
       Row 0 (top, 3 equal columns):
         (a) GOES-16 RGB (goes-level2-tdr index 1) with dropsonde 16 & 17 markers.
         (b) Skew-T of dropsonde index 16.
@@ -936,7 +1013,7 @@ def convective_mixing():
         (e) Flight-level water-vapour mixing ratio (MR.d) on left axis and
             ambient temperature (TA.d) on right axis vs time.
 
-    Saves to figures/convective_mixing.png
+    Saves to figures/figure14.png
     """
     lons = (-55.5, -52.5)
     lats = (9,     12.5)
@@ -1092,7 +1169,7 @@ def convective_mixing():
 
     # --- save ----------------------------------------------------------------
     os.makedirs(path_figures, exist_ok=True)
-    outfile = path_figures + 'figure13.png'
+    outfile = path_figures + 'figure14.png'
     plt.savefig(outfile, dpi=300., bbox_inches='tight', pad_inches=0.4)
     plt.close(fig)
     print(f'Saved {outfile}')

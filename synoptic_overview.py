@@ -826,7 +826,8 @@ def combined_figure():
 
 def overlay_flight_data(ax, goes_time, lons, lats,
                         sonde_indices=None, sonde_labels=None,
-                        fl_interval_min=5, linec='k', drop_fs=10, label_color=None):
+                        fl_interval_min=5, linec='k', drop_fs=10, label_color=None,
+                        dot_color=None):
     """
     Overlay P-3 flight data on an existing cartopy GeoAxes:
       - Aircraft symbol at GOES scan time
@@ -844,11 +845,14 @@ def overlay_flight_data(ax, goes_time, lons, lats,
     fl_interval_min : minutes between plotted wind barb positions (default 5)
     linec           : colour for all overlaid elements ('k' or 'w')
     drop_fs         : font size for sonde number labels
+    dot_color       : colour for the dropsonde circles only; defaults to ``linec``
     label_color     : colour for the sonde number labels only; defaults to
         ``linec`` if not given
     """
     if label_color is None:
         label_color = linec
+    if dot_color is None:
+        dot_color = linec
     pc    = ccrs.PlateCarree()
     nudge = 0.1   # degree offset for sonde number label
 
@@ -932,7 +936,7 @@ def overlay_flight_data(ax, goes_time, lons, lats,
             ref_lat = float(drop.reference_lat.values)
 
             if (lons[0] <= ref_lon <= lons[1] and lats[0] <= ref_lat <= lats[1]):
-                ax.scatter(ref_lon, ref_lat, c=linec, marker='o', s=40,
+                ax.scatter(ref_lon, ref_lat, c=dot_color, marker='o', s=40,
                            transform=pc, zorder=100)
                 ax.text(ref_lon + nudge, ref_lat + nudge, str(lbl),
                         color=label_color, fontsize=drop_fs, fontweight='bold',

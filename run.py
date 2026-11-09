@@ -89,24 +89,26 @@ tdr_analysis.plot_tdr_curtains(convective_axis_deg=20, add_barbs=True, add_vort=
 
 
 #%%
-# Figure 11: skew Ts and fl distributions
+# Figure 11: skew T composites, stratiform vs. convective dropsondes
 dropsonde_profiles.composite_plots()
-kinematic_partitions.complete_flightlevel_partitions_nice()
 
 #%%
-# Figure 12: sal + buffer zone time series, distribitions, spatial plots, etc
-kinematic_partitions.flightlevel_buffer_sal_dists()
-kinematic_partitions.flightlevel_buffer_sal_timeseries(t_start=19.25, t_end=20.0)
-kinematic_partitions.flightlevel_dists_spatial()
+# Figure 12: flight-level distributions of stratiform, convective, buffer zone, and SAL
+# regions atop one another, plus GOES map of the flight track color-coded by region
+kinematic_partitions.flightlevel_region_dists()
+
+#%%
+# Figure 13: SAL structure: GOES + flight-level RH, skew Ts (dropsonde 18 + SAL composite),
+# and flight-level time series (buffer zone / SAL boundaries marked)
 dropsonde_profiles.sal()
 
 #%%
-# Figure 13
+# Figure 14
 # convective mixing with convective downdrafts and buffer zone
 dropsonde_profiles.convective_mixing()
 
 #%%
-# Figure 14
+# Figure 15
 # goes + skew t plots of unfavorable outflow interactions with convection
 dropsonde_profiles.outflow()
 
