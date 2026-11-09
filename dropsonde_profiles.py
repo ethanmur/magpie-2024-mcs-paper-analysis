@@ -116,18 +116,15 @@ def make_skewt(fig, subplot_spec, filepath, filename,
 
 
 # ---------------------------------------------------------------------------
-# Figure 3
+# Figure 1: intro overview — GOES + flight track + dropsonde locations
 # ---------------------------------------------------------------------------
 
-def cold_pool_first_dropsondes_goes():
+def goes_flight_overview():
     """
-    Figure 3: 2 x 2 layout.
-      (a) upper-left:  GOES-16 RGB + full P-3 flight track + aircraft symbol
-      (b) upper-right: GOES-16 RGB + wind barbs + dropsonde-4/6 circles
-      (c) lower-left:  Skew-T of dropsonde 4
-      (d) lower-right: Skew-T of dropsonde 6
+    Figure 1: single GOES-16 RGB panel with the full P-3 flight track
+    (radar passes highlighted) and all dropsonde release locations in the domain.
 
-    Saves to figures/cold_pool_thermo.png
+    Saves to figures/figure1.png
     """
     lons = (-58.5, -52.5)
     lats = (8,     13)
@@ -140,44 +137,17 @@ def cold_pool_first_dropsondes_goes():
                          'xtick.labelsize': 12, 'ytick.labelsize': 12,
                          'legend.fontsize': 11})
 
-    # --- paths ----------------------------------------------------------------
-    path_goes  = str(path_project) + "/data/goes-level2-cold pool dropsondes/"
-    path_drops = str(path_project) + "/data/dropsondes/"
-
-    # --- load GOES data -------------------------------------------------------
+    path_goes = str(path_project) + "/data/goes-level2-cold pool dropsondes/"
     goes_files = synoptic_overview.pull_files_helper(path_goes)
     print(f'GOES dropsonde file: {goes_files[0]}')
     ds = synoptic_overview.data_subset(path_goes, goes_files[0], lats, lons)
 
-    # --- identify dropsonde files (0-based index, sorted alphabetically) ------
-    drop_files   = synoptic_overview.pull_files_helper(path_drops)
-    sonde_4_file = drop_files[4]
-    sonde_6_file = drop_files[6]
-    print(f'Sonde 4: {sonde_4_file}')
-    print(f'Sonde 6: {sonde_6_file}')
+    asp_goes    = synoptic_overview._panel_aspect(lons, lats)
+    goes_height = 4.0
+    fig = plt.figure(figsize=(goes_height * asp_goes, goes_height))
+    pc  = ccrs.PlateCarree()
+    ax_a = fig.add_subplot(111, projection=pc)
 
-    # --- figure sizing --------------------------------------------------------
-    asp_goes     = synoptic_overview._panel_aspect(lons, lats)
-    goes_height  = 4.0              # inches
-    goes_width   = goes_height * asp_goes
-    skewt_size   = goes_height      # square-ish
-
-    fig_width  = 2 * goes_width
-    fig_height = goes_height + skewt_size
-
-    fig = plt.figure(figsize=(fig_width, fig_height))
-
-    gs = GridSpec(2, 2, figure=fig,
-                  width_ratios=[goes_width, goes_width],
-                  height_ratios=[goes_height, skewt_size],
-                  hspace=0.5, wspace=0.3)
-
-    goes_end_time = ds.time_bounds.values[1]
-    pc = ccrs.PlateCarree()
-
-    # --- panel (a): GOES RGB + full flight track + aircraft symbol -----------
-    ax_a = fig.add_subplot(gs[0, 0], projection=pc)
-    # omit panel_label here — drawn manually at high zorder after all overlays
     synoptic_overview.test_plot(ds, channel='rgb', lats=lats, lons=lons,
                                 ax=ax_a, fig=fig,
                                 show_colorbar=False,
@@ -228,41 +198,84 @@ def cold_pool_first_dropsondes_goes():
         except Exception:
             pass
 
-    # # aircraft symbol at GOES scan time — add_artist returns the object so we
-    # # can set its zorder above everything else
-    # synoptic_overview.overlay_flight_data(
-    #     ax_a, goes_end_time, lons, lats,
-    #     sonde_indices=None,
-    #     fl_interval_min=999999,   # effectively skips wind barbs
-    #     linec='k')
-    # # bring the most-recently-added artist (the AnnotationBbox plane) to front
-    # if ax_a.artists:
-    #     ax_a.artists[-1].set_zorder(15)
+    os.makedirs(path_figures, exist_ok=True)
+    outfile = path_figures + 'figure1.png'
+    plt.savefig(outfile, dpi=300., bbox_inches='tight')
+    plt.close(fig)
+    plt.rcParams.update(_orig_rc)
+    print(f'Saved {outfile}')
 
-    # panel label drawn last so it sits above all overlays
-    label_fs = plt.rcParams['axes.labelsize']
-    ax_a.text(0.05, 0.95, '(a)',
-              transform=ax_a.transAxes, ha='left', va='top',
-              fontsize=label_fs, zorder=20,
-              bbox=dict(facecolor='white', alpha=1., edgecolor='k',
-                        linewidth=1.2, pad=4))
 
-    # --- panel (b): GOES RGB + wind barbs + sonde circles --------------------
-    ax_b = fig.add_subplot(gs[0, 1], projection=pc)
+# ---------------------------------------------------------------------------
+# Figure 6: GOES + wind barbs | Skew-T dropsonde 4 | Skew-T dropsonde 6
+# ---------------------------------------------------------------------------
+
+def cold_pool_first_dropsondes_goes():
+    """
+    Figure 6: 1 x 3 layout.
+      (a) GOES-16 RGB + wind barbs + dropsonde-4/6 circles
+      (b) Skew-T of dropsonde 4
+      (c) Skew-T of dropsonde 6
+
+    Saves to figures/figure6.png
+    """
+    lons = (-58.5, -52.5)
+    lats = (8,     13)
+
+    # --- bump font sizes for this figure only (restored at the end) -----------
+    _orig_rc = {k: plt.rcParams[k] for k in
+                ['axes.labelsize', 'axes.titlesize', 'xtick.labelsize',
+                 'ytick.labelsize', 'legend.fontsize']}
+    plt.rcParams.update({'axes.labelsize': 15, 'axes.titlesize': 15,
+                         'xtick.labelsize': 12, 'ytick.labelsize': 12,
+                         'legend.fontsize': 11})
+
+    # --- paths ----------------------------------------------------------------
+    path_goes  = str(path_project) + "/data/goes-level2-cold pool dropsondes/"
+    path_drops = str(path_project) + "/data/dropsondes/"
+
+    # --- load GOES data -------------------------------------------------------
+    goes_files = synoptic_overview.pull_files_helper(path_goes)
+    print(f'GOES dropsonde file: {goes_files[0]}')
+    ds = synoptic_overview.data_subset(path_goes, goes_files[0], lats, lons)
+
+    # --- identify dropsonde files (0-based index, sorted alphabetically) ------
+    drop_files   = synoptic_overview.pull_files_helper(path_drops)
+    sonde_4_file = drop_files[4]
+    sonde_6_file = drop_files[6]
+    print(f'Sonde 4: {sonde_4_file}')
+    print(f'Sonde 6: {sonde_6_file}')
+
+    # --- figure sizing --------------------------------------------------------
+    asp_goes     = synoptic_overview._panel_aspect(lons, lats)
+    panel_height = 4.0              # inches
+    goes_width   = panel_height * asp_goes
+    skewt_width  = panel_height     # square-ish
+
+    fig = plt.figure(figsize=(goes_width + 2 * skewt_width, panel_height))
+    gs = GridSpec(1, 3, figure=fig,
+                  width_ratios=[goes_width, skewt_width, skewt_width],
+                  wspace=0.55)
+
+    goes_end_time = ds.time_bounds.values[1]
+    pc = ccrs.PlateCarree()
+
+    # --- panel (a): GOES RGB + wind barbs + sonde circles --------------------
+    ax_a = fig.add_subplot(gs[0, 0], projection=pc)
     synoptic_overview.test_plot(ds, channel='rgb', lats=lats, lons=lons,
-                                ax=ax_b, fig=fig,
+                                ax=ax_a, fig=fig,
                                 show_colorbar=False,
-                                show_lat=False, show_lon=True,
+                                show_lat=True, show_lon=True,
                                 show_title_banner=False,
                                 show_time=True,
-                                panel_label='b',
+                                panel_label='a',
                                 label_x=0.05, label_y=0.95,
                                 time_x=0.95, time_y=0.95)
     # test_plot's show_lat branch sets ylabel but skips xlabel; add it manually
     ax_a.set_xlabel("Longitude ($\degree$)", fontsize=plt.rcParams['axes.labelsize'])
 
     synoptic_overview.overlay_flight_data(
-        ax_b, goes_end_time, lons, lats,
+        ax_a, goes_end_time, lons, lats,
         sonde_indices=[4, 6],
         sonde_labels=[4, 6],
         fl_interval_min=5,
@@ -270,20 +283,20 @@ def cold_pool_first_dropsondes_goes():
         drop_fs=13,
         label_color='white')
 
-    # --- panel (c): Skew-T dropsonde 4 ---------------------------------------
-    skew4 = make_skewt(fig, gs[1, 0], path_drops, sonde_4_file, panel_label='c', xlims=[15,30], ylims=[1020,680],
+    # --- panel (b): Skew-T dropsonde 4 ---------------------------------------
+    skew4 = make_skewt(fig, gs[0, 1], path_drops, sonde_4_file, panel_label='b', xlims=[15,30], ylims=[1020,680],
                        add_leg=False, xtick_step=5)
     skew4.ax.set_title('Dropsonde 4')
     skew4.ax.xaxis.get_major_ticks()[-1].label1.set_visible(False)   # hide '30' (covered by wind barb)
 
-    # --- panel (d): Skew-T dropsonde 6 ---------------------------------------
-    skew6 = make_skewt(fig, gs[1, 1], path_drops, sonde_6_file, panel_label='d', ylims=[1020,680],
+    # --- panel (c): Skew-T dropsonde 6 ---------------------------------------
+    skew6 = make_skewt(fig, gs[0, 2], path_drops, sonde_6_file, panel_label='c', ylims=[1020,680],
                        add_leg=False, xtick_step=5)
     skew6.ax.set_title('Dropsonde 6')
 
     # --- save -----------------------------------------------------------------
     os.makedirs(path_figures, exist_ok=True)
-    outfile = path_figures + 'figure5.png' # 'cold_pool_thermo.png'
+    outfile = path_figures + 'figure6.png'
     plt.savefig(outfile, dpi=300., bbox_inches='tight')
     plt.close(fig)
     plt.rcParams.update(_orig_rc)
@@ -475,7 +488,7 @@ def composite_plots():
 
     # --- save ----------------------------------------------------------------
     os.makedirs(path_figures, exist_ok=True)
-    outfile = path_figures + 'figure10_dropsondes.png'
+    outfile = path_figures + 'figure11_dropsondes.png'
     plt.savefig(outfile, dpi=300., bbox_inches='tight', pad_inches=0.4)
     plt.close(fig)
     print(f'Saved {outfile}')
@@ -666,7 +679,7 @@ def sal():
 
     # --- save ----------------------------------------------------------------
     os.makedirs(path_figures, exist_ok=True)
-    outfile = path_figures + 'figure11_sal.png'
+    outfile = path_figures + 'figure12_sal.png'
     plt.savefig(outfile, dpi=300., bbox_inches='tight', pad_inches=0.4)
     plt.close(fig)
     print(f'Saved {outfile}')
@@ -778,7 +791,7 @@ def outflow():
 
     # --- save ----------------------------------------------------------------
     os.makedirs(path_figures, exist_ok=True)
-    outfile = path_figures + 'figure13.png'
+    outfile = path_figures + 'figure14.png'
     plt.savefig(outfile, dpi=300., bbox_inches='tight', pad_inches=0.4)
     plt.close(fig)
     print(f'Saved {outfile}')
@@ -1079,7 +1092,7 @@ def convective_mixing():
 
     # --- save ----------------------------------------------------------------
     os.makedirs(path_figures, exist_ok=True)
-    outfile = path_figures + 'figure12.png'
+    outfile = path_figures + 'figure13.png'
     plt.savefig(outfile, dpi=300., bbox_inches='tight', pad_inches=0.4)
     plt.close(fig)
     print(f'Saved {outfile}')

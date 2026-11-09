@@ -26,22 +26,29 @@ import kinematic_partitions
 # make the plots here!
 
 # Figure 1
-synoptic_overview.combined_figure()
+# intro overview: GOES + full P-3 flight track + dropsonde locations
+dropsonde_profiles.goes_flight_overview()
 
 
 #%%
 
 # Figure 2
+synoptic_overview.combined_figure()
+
+
+#%%
+
+# Figure 3
 # Plot evolution of southern and eastern convection and development of the cold pool
 # new, streamlined plot
 synoptic_overview.combined_cold_pools_wide_ir_only()
 
 
 #%%
-# Figure 3
+# Figure 4
 # provided by Jeff- no code to add
 
-# Figure 4
+# Figure 5
 # TAMS analysis
 start_time = pd.Timestamp('2024-07-15 14:30:00')
 supplemental_calcs.plot_tams_stats_nice(start_time=start_time)
@@ -49,56 +56,57 @@ supplemental_calcs.plot_tams_stats_nice(start_time=start_time)
 
 
 #%%
-# Figure 5
+# Figure 6
 # plot dropsonde profiles ahead of and behind cold pool / convective complex. also add satellite view
 # for context!
 dropsonde_profiles.cold_pool_first_dropsondes_goes()
 
 
 #%%
-# Figure 6
+# Figure 7
 # 3x3 TDR radar figure: reflectivity + winds at 2km and 6km, rainfall classification
 tdr_analysis.tdr_radar_figure(cross_endpoints_1=None, cross_endpoints_2=None)
 
 
 #%%
 
-# Figure 7: TDR statistics
+# Figure 8: TDR statistics
 tdr_analysis.plot_tdr_statistics()
 
 #%%
-# Figure 8: kinematic/reflectivity CFADs partitioned by precip classification
+# Figure 9: kinematic/reflectivity CFADs partitioned by precip classification
 # (weak echo + stratiform vs. shallow/moderate/deep convective), pooling all
 # 3 flight passes, plus per-leg CFADs to see how properties evolve pass to pass
 kinematic_partitions.complete_partitions_contour_nice()
 
 
 #%%
-# Figure 9: TDR curtain from 2nd pass
+# Figure 10: TDR curtain from 2nd pass
 filename = '240715I1_1919_xy.nc'
 ce = (10.6, -54.3, 10.25, -53.6)
-out_name = 'figure9.nc'
+out_name = 'figure10.nc'
 tdr_analysis.plot_tdr_curtains(convective_axis_deg=20, add_barbs=True, add_vort=True, x_axis='distance', cross_endpoints=ce, passind=0)
 
 
 #%%
-# Figure 10: skew Ts and fl distributions
+# Figure 11: skew Ts and fl distributions
 dropsonde_profiles.composite_plots()
 kinematic_partitions.complete_flightlevel_partitions_nice()
 
 #%%
-# Figure 11: sal + buffer zone time series, distribitions, spatial plots, etc
+# Figure 12: sal + buffer zone time series, distribitions, spatial plots, etc
 kinematic_partitions.flightlevel_buffer_sal_dists()
 kinematic_partitions.flightlevel_buffer_sal_timeseries(t_start=19.25, t_end=20.0)
 kinematic_partitions.flightlevel_dists_spatial()
+dropsonde_profiles.sal()
 
 #%%
-# Figure 12
+# Figure 13
 # convective mixing with convective downdrafts and buffer zone
 dropsonde_profiles.convective_mixing()
 
 #%%
-# Figure 13
+# Figure 14
 # goes + skew t plots of unfavorable outflow interactions with convection
 dropsonde_profiles.outflow()
 

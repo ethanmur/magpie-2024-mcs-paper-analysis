@@ -434,7 +434,7 @@ def tdr_radar_figure(cross_endpoints_1=(10.55, -54.3, 10.15, -53.7),
 
     # --- save ----------------------------------------------------------------
     os.makedirs(path_figures, exist_ok=True)
-    outfile = path_figures + f'figure6.png'
+    outfile = path_figures + f'figure7.png'
     plt.savefig(outfile, dpi=300., bbox_inches='tight')
     plt.close(fig)
     print(f'Saved {outfile}')
@@ -829,7 +829,7 @@ def plot_tdr_curtains(convective_axis_deg=None, add_barbs=False, add_vort=False,
         if x_axis=='distance':
             suffix += '_dist'
 
-        fname = 'figure9.png' # f'curtain_pass_{flighti}{suffix}.png'
+        fname = 'figure10.png' # f'curtain_pass_{flighti}{suffix}.png'
         plt.savefig(path_figures + fname, dpi=300, bbox_inches='tight')
         plt.close(fig)
         print(f'Saved {fname}')
@@ -1030,7 +1030,7 @@ def plot_tdr_statistics():
 
     # ---- save ----------------------------------------------------------------
     os.makedirs(path_figures, exist_ok=True)
-    outfile = path_figures + 'figure7.png'
+    outfile = path_figures + 'figure8.png'
     plt.savefig(outfile, dpi=300, bbox_inches='tight')
     plt.close(fig)
     print(f'Saved {outfile}')

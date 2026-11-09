@@ -816,7 +816,7 @@ def combined_figure():
 
     # ---- save ----------------------------------------------------------------
     os.makedirs(path_figures, exist_ok=True)
-    outfile = path_figures + 'figure1.png'
+    outfile = path_figures + 'figure2.png'
     plt.savefig(outfile, dpi=170., bbox_inches='tight')
     plt.close(fig)
     print(f'Saved {outfile}')
@@ -1148,8 +1148,8 @@ def combined_cold_pools():
 def combined_cold_pools_wide_ir_only():
     """
     Figure 2 (new): simpler 2-row × 2-column grid showing general convective evolution using IR channel.
-        all panels showing time evolution of wider domain from figure 1.
-        green rectangle outlining the tight convective zoom domain shown in Figure 3, made by Jeff. Will need
+        all panels showing time evolution of wider domain from figure 2.
+        green rectangle outlining the tight convective zoom domain shown in Figure 4, made by Jeff. Will need
         to redefine this zoom domain to match Jeff's boxes
 
     Publication options:
@@ -1289,7 +1289,7 @@ def combined_cold_pools_wide_ir_only():
                          linewidth=0.5, color='white', alpha=0.5,
                          linestyle='-', zorder=5)
 
-            # draw thick green box showing the tight zoom domain extent (Figure 3)
+            # draw thick green box showing the tight zoom domain extent (Figure 4)
             if True:   # zoom domain shown on all four panels
                 ax.plot(
                     [lons_conv[0], lons_conv[1], lons_conv[1], lons_conv[0], lons_conv[0]],
@@ -1300,7 +1300,7 @@ def combined_cold_pools_wide_ir_only():
     # ---- save ----------------------------------------------------------------
     savepath = path_figures
     os.makedirs(savepath, exist_ok=True)
-    outfile = savepath + 'figure2.png' # 'combined_cold_pools_4_panel.png'
+    outfile = savepath + 'figure3.png' # 'combined_cold_pools_4_panel.png'
     plt.savefig(outfile, dpi=300., bbox_inches='tight', pad_inches=0.3)
     plt.close(fig)
     print(f'Saved {outfile}')

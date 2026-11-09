@@ -507,10 +507,10 @@ def complete_partitions_contour(convective_axis_deg=None, per_leg=False, wind_un
 
 def complete_partitions_contour_nice():
     """
-    Figure 8: per-leg percentile-contour CFADs of (a) TDR reflectivity and
+    Figure 9: per-leg percentile-contour CFADs of (a) TDR reflectivity and
     (b) vertical velocity W, side by side, all passes overlaid in each panel
     (colored per pass). Pass 1 is excluded from W (sparse sampling), as in
-    complete_partitions_contour(). Saved as figure8.png in the main figures dir.
+    complete_partitions_contour(). Saved as figure9.png in the main figures dir.
     """
     os.makedirs(path_figures, exist_ok=True)
 
@@ -546,9 +546,9 @@ def complete_partitions_contour_nice():
             ax.set_ylabel('')
 
     plt.tight_layout()
-    plt.savefig(path_figures + 'figure8.png', dpi=300, bbox_inches='tight')
+    plt.savefig(path_figures + 'figure9.png', dpi=300, bbox_inches='tight')
     plt.close(fig)
-    print('Saved figure8.png')
+    print('Saved figure9.png')
 
 
 # ---------------------------------------------------------------------------
@@ -793,7 +793,7 @@ def complete_flightlevel_partitions_nice():
     handles, labels = axs.flat[0].get_legend_handles_labels()
     ax_leg.legend(handles, labels, loc='center', fontsize=13, framealpha=1.)
     plt.tight_layout()
-    plt.savefig(path_figures + 'figure10_fl_dists.png', dpi=300, bbox_inches='tight')
+    plt.savefig(path_figures + 'figure11_fl_dists.png', dpi=300, bbox_inches='tight')
     plt.close(fig)
     print('Saved flightlevel_dists_nice.png')
 
@@ -911,7 +911,7 @@ def flightlevel_buffer_sal_dists():
     handles, labels = axs.flat[0].get_legend_handles_labels()
     ax_leg.legend(handles, labels, loc='center', fontsize=13, framealpha=1.)
     plt.tight_layout()
-    plt.savefig(path_figures + 'figure11_fl_dists.png', dpi=300, bbox_inches='tight')
+    plt.savefig(path_figures + 'figure12_fl_dists.png', dpi=300, bbox_inches='tight')
     plt.close(fig)
     print('Saved flightlevel_dists_nice_sal.png')
 
@@ -969,7 +969,7 @@ def flightlevel_buffer_sal_timeseries(t_start=19 + 20 / 60, t_end=20.0):
                     ax.axvline(tb, color=color, lw=2, zorder=1)   # behind data lines
 
     plt.tight_layout()
-    plt.savefig(path_figures + 'figure11_fl_ts.png', dpi=300,
+    plt.savefig(path_figures + 'figure12_fl_ts.png', dpi=300,
                 bbox_inches='tight', pad_inches=0.4)
     plt.close(fig)
     print('Saved flightlevel_timeseries_sal.png')
