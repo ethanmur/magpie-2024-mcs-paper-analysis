@@ -759,8 +759,8 @@ def _fixed_bins(values, var):
 # ---------------------------------------------------------------------------
 
 # decimal-hour UTC windows (placeholders; adjust as needed)
-BUFFER_WINDOWS = [(19.42, 19.49), (19.835, 19.9)]
-SAL_WINDOWS    = [(19.52, 19.835)]
+BUFFER_WINDOWS = [(19.42, 19.505), (19.835, 19.9)]
+SAL_WINDOWS    = [(19.505, 19.835)]
 FL_PRES_VAR    = 'PS.c'   # corrected flight-level static pressure (mb); only in the full file
 FL_FULL_FILE   = '20240715I1_A.nc'
 BUFFER_COLOR   = 'gold'
@@ -837,9 +837,12 @@ def flightlevel_region_dists(show_east_west=False):
     ]
     if show_east_west:
         east_mask = _window_mask(fl_time, [(18.35, 18.9)])
-        west_mask = _window_mask(fl_time, [(19.9, 20.25)])
+        west_mask = _window_mask(fl_time, [(19.9, 20.2)])
         regions += [(east_mask, '#b8b8b8', 'East of MCS', '-'),
                     (west_mask, '#505050', 'West of MCS', '-')]
+    # bottom-to-top stacking order of the distribution lines (legend order unchanged)
+    draw_order = ['West of MCS', 'East of MCS', 'SAL', 'Buffer zone',
+                  'Weak Echo + Stratiform', 'Convective']
     any_mask = np.zeros_like(ws_mask, dtype=bool)
     for m, *_ in regions:
         any_mask |= m
@@ -870,12 +873,14 @@ def flightlevel_region_dists(show_east_west=False):
             if vals.size == 0:
                 continue
             hist, _ = np.histogram(vals, bins=bins)
+            z = draw_order.index(name) + 2   # stacking: West of MCS first (bottom) ... convective last (top)
             if var == 'RH':
                 # cumulative distribution (evaluated at upper bin edges)
                 ax.plot(bins[1:], np.cumsum(hist) / hist.sum(), color=color,
-                        lw=1.8, ls=ls, label=name)
+                        lw=1.8, ls=ls, label=name, zorder=z)
             else:
-                ax.plot(centers, hist / hist.sum(), color=color, lw=1.8, ls=ls, label=name)
+                ax.plot(centers, hist / hist.sum(), color=color, lw=1.8, ls=ls,
+                        label=name, zorder=z)
 
         ax.set_xlabel(label, fontsize=13, labelpad=10)
         ax.set_ylabel('Probability', fontsize=13, labelpad=10)
@@ -1193,3 +1198,124 @@ def tdr_offmcs_mask_check(buffer_km=10., dbz_thresh=10., lons=(-56.5, -51.5),
     plt.savefig(out_dir + 'tdr_offmcs_mask_check.png', dpi=300, bbox_inches='tight')
     plt.close(fig)
     print('Saved tdr_offmcs_mask_check.png')
+
+
+def flightlevel_sal_buffer_spectra(nperseg_max=256):
+    """
+    Test plots: spectral analysis of 1 Hz flight-level mixing ratio, RH (recomputed)
+    and vertical velocity within the buffer zone / SAL, looking for a dominant
+    periodicity (gravity waves, ABL rolls, ...). Three figures, saved to
+    figures-v-temp-2026-11-09-tdr-class-check/:
+      spectra_buffer_sal.png : one contiguous span covering buffer zone + SAL
+      spectra_buffer.png     : the two buffer-zone segments, analysed separately
+      spectra_sal.png        : SAL only
+    Each figure is 3 rows (MR, RH, W) x 2 columns: detrended time series (left)
+    and Welch power spectrum (right, log-log) with a -5/3 reference slope, the
+    peak of the variance-preserving spectrum (f*PSD) marked, and a top axis
+    converting frequency to along-track wavelength using the mean ground speed.
+    NaN gaps are linearly interpolated; the series is linearly detrended.
+    """
+    from scipy import signal
+
+    out_dir = str(path_project) + "/figures-v-temp-2026-11-09-tdr-class-check/"
+    os.makedirs(out_dir, exist_ok=True)
+
+    fl = xr.open_dataset(FLIGHT_LEVEL_PATH + FLIGHT_LEVEL_FILE, decode_times=False)
+    fl_time = build_time_array(fl, axis_type='decimal')
+    _, rh = flightlevel_rh_thetae(fl)
+    lat, lon = fl['LATref'].values, fl['LONref'].values
+    dt = np.median(np.diff(fl_time)) * 3600.   # s
+    fs = 1. / dt
+
+    variables = [(fl['MR.d'].values, 'Mixing ratio (g kg$^{-1}$)'),
+                 (rh,                'RH (%)'),
+                 (fl['UWZ.d'].values, 'W (m s$^{-1}$)')]
+
+    bufmin = min(w[0] for w in BUFFER_WINDOWS)
+    # (file name, title, [(segment label, color, (t0, t1))], shade windows?)
+    cases = [
+        ('spectra_buffer_sal.png', 'Buffer zone + SAL',
+         [('Buffer + SAL', 'k', (bufmin, BUFFER_WINDOWS[-1][1]))], True),
+        ('spectra_buffer.png', 'Buffer zone',
+         [(f'Buffer {i+1} ({w[0]:.2f}-{w[1]:.2f})', c, w)
+          for i, (w, c) in enumerate(zip(BUFFER_WINDOWS, ['goldenrod', 'peru']))], False),
+        ('spectra_sal.png', 'SAL',
+         [('SAL', SAL_COLOR, SAL_WINDOWS[0])], False),
+    ]
+
+    label_fs = 12
+    for fname, title, segments, shade in cases:
+        # mean ground speed over the whole case span -> wavelength axis
+        span = ((fl_time >= min(s[2][0] for s in segments)) &
+                (fl_time <= max(s[2][1] for s in segments)))
+        kx = 111.2e3 * np.cos(np.deg2rad(np.nanmean(lat[span])))
+        step = np.hypot(np.diff(lon[span]) * kx, np.diff(lat[span]) * 111.2e3)
+        speed = np.nansum(step) / (step.size * dt)   # m/s
+
+        fig, axs = plt.subplots(3, 2, figsize=(13, 9),
+                                gridspec_kw=dict(width_ratios=[1.3, 1], hspace=0.35,
+                                                 wspace=0.22))
+        for row, (data, vlabel) in enumerate(variables):
+            ax_t, ax_s = axs[row]
+            peak_txt = []
+            for seg_i, (slabel, color, (t0, t1)) in enumerate(segments):
+                m = (fl_time >= t0) & (fl_time <= t1)
+                t, x = fl_time[m], data[m].astype(float)
+                bad = ~np.isfinite(x)
+                if bad.all():
+                    continue
+                x = np.interp(t, t[~bad], x[~bad])
+                x = signal.detrend(x)
+
+                ax_t.plot(t, x, color=color, lw=0.9, label=slabel)
+                nper = min(nperseg_max, x.size)
+                f, psd = signal.welch(x, fs=fs, window='hann', nperseg=nper,
+                                      detrend='linear')
+                f, psd = f[1:], psd[1:]
+                ax_s.loglog(f, psd, color=color, lw=1.4, label=slabel)
+
+                # dominant period: peak of f*PSD, skipping the 2 lowest resolved bins
+                ok = f >= 2. * fs / nper
+                if ok.any():
+                    fpk = f[ok][np.argmax((f * psd)[ok])]
+                    ax_s.axvline(fpk, color=color, ls=':', lw=1.)
+                    peak_txt.append((color, f'{slabel}: {1./fpk:.0f} s '
+                                     f'({speed / fpk / 1e3:.1f} km)'))
+                    print(f'{title} | {vlabel} | {slabel}: peak period {1./fpk:.1f} s, '
+                          f'wavelength {speed / fpk / 1e3:.2f} km '
+                          f'(NaN fraction {bad.mean():.2f})')
+                if seg_i == 0:   # -5/3 reference slope anchored to this spectrum
+                    c53 = np.median(psd * f ** (5. / 3.))
+                    ax_s.loglog(f, c53 * f ** (-5. / 3.), color='0.5', ls='--', lw=1.,
+                                label='$f^{-5/3}$')
+
+            if shade:
+                for w in BUFFER_WINDOWS:
+                    ax_t.axvspan(*w, color=BUFFER_COLOR, alpha=0.35, lw=0)
+                for w in SAL_WINDOWS:
+                    ax_t.axvspan(*w, color=SAL_COLOR, alpha=0.2, lw=0)
+
+            for k, (c, txt) in enumerate(peak_txt):
+                ax_s.text(0.03, 0.05 + 0.09 * k, txt, transform=ax_s.transAxes,
+                          color=c, fontsize=9, va='bottom')
+            ax_t.set_ylabel(f'{vlabel}\n(detrended)', fontsize=label_fs)
+            ax_s.set_ylabel('PSD', fontsize=label_fs)
+            ax_s.set_xlabel('Frequency (Hz)', fontsize=label_fs)
+            ax_t.set_xlabel('Time (decimal UTC hours)', fontsize=label_fs)
+            for ax, lab in zip((ax_t, ax_s), ('abcdefgh'[2 * row], 'abcdefgh'[2 * row + 1])):
+                ax.text(0.02, 0.95, f'({lab})', transform=ax.transAxes, ha='left',
+                        va='top', fontsize=12, zorder=20,
+                        bbox=dict(facecolor='white', edgecolor='k', linewidth=1., pad=3))
+            if row == 0:
+                ax_t.set_title(title, fontsize=13)
+                ax_t.legend(loc='upper right', fontsize=8, framealpha=1.)
+                ax_s.legend(loc='upper right', fontsize=8, framealpha=1.)
+                sec = ax_s.secondary_xaxis(
+                    'top', functions=(lambda f_: speed / f_ / 1e3,
+                                      lambda L_: speed / L_ / 1e3))
+                sec.set_xlabel(f'Wavelength (km), ground speed {speed:.0f} m s$^{{-1}}$',
+                               fontsize=10)
+
+        plt.savefig(out_dir + fname, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        print(f'Saved {fname}')

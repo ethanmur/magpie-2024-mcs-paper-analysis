@@ -30,7 +30,7 @@ import synoptic_overview
 
 def make_skewt(fig, subplot_spec, filepath, filename,
                panel_label=None, xlims=[15, 30], ylims=[1020, 680],
-               add_leg=True, xtick_step=None):
+               add_leg=True, xtick_step=None, aspect=None):
     """
     Build a Skew-T Log-P diagram on the given GridSpec subplot position.
 
@@ -62,7 +62,9 @@ def make_skewt(fig, subplot_spec, filepath, filename,
     v  = data_coarse.v_wind
 
     # --- create SkewT on the given GridSpec position --------------------------
-    skew = SkewT(fig, rotation=45, subplot=subplot_spec)
+    # MetPy fixes the axes aspect (default 80.5); pass a larger value for a taller box
+    skew = SkewT(fig, rotation=45, subplot=subplot_spec,
+                 **({} if aspect is None else {'aspect': aspect}))
 
     lw = 2.0
     skew.plot(p, T,  'r', label='T',      lw=lw)
@@ -393,7 +395,7 @@ def make_composite_skewt(fig, subplot_spec, p_mean, T_mean, Td_mean,
                          u_mean, v_mean, p_all, T_all, Td_all,
                          panel_label=None, title=None,
                          xlims=[-10, 35], ylims=[1020, 400],
-                         add_leg=True):
+                         add_leg=True, aspect=None):
     """
     Build a composite Skew-T on a GridSpec SubplotSpec.
 
@@ -407,7 +409,9 @@ def make_composite_skewt(fig, subplot_spec, p_mean, T_mean, Td_mean,
     label_fs = plt.rcParams['axes.labelsize']
     tick_fs  = plt.rcParams['xtick.labelsize']
 
-    skew = SkewT(fig, rotation=45, subplot=subplot_spec)
+    # MetPy fixes the axes aspect (default 80.5); pass a larger value for a taller box
+    skew = SkewT(fig, rotation=45, subplot=subplot_spec,
+                 **({} if aspect is None else {'aspect': aspect}))
 
     lw_ind  = 0.8    # individual profile linewidth
     alpha_ind = 0.30  # individual profile alpha
@@ -633,14 +637,14 @@ def sal():
      p_sal_all, T_sal_all, Td_sal_all) = _composite_helper(all_data, sal_indices,)
 
     # --- figure sizing -------------------------------------------------------
-    panel_height = 3.5          # top-row panel height (inches)
+    panel_height = 4.4          # top-row panel height (inches); taller skew-Ts
     ts_height    = 2.5          # height of each time-series row
-    gap_height   = 0.4          # spacer row between top panels and time series
-    fig = plt.figure(figsize=(panel_height * 3, panel_height + 3 * ts_height + gap_height))
+    gap_height   = 0.1          # spacer row between top panels and time series
+    fig = plt.figure(figsize=(12.5, panel_height + 3 * ts_height + gap_height))
 
     gs = GridSpec(5, 3, figure=fig,
                   height_ratios=[panel_height, gap_height, ts_height, ts_height, ts_height],
-                  wspace=0.40, hspace=0.30)
+                  wspace=0.52, hspace=0.30)
 
     # --- panel (a): GOES RGB + flight-level RH scatter -----------------------
     pc      = ccrs.PlateCarree()
@@ -714,6 +718,7 @@ def sal():
                                     panel_label='c',
                                     title='SAL Composite',
                                     xlims=[-15, 30], ylims=[1020, 360])
+    skew_sal.ax.set_ylabel('')   # pressure label collides with wind barbs
 
     # --- time series (rows 1-3): from 19:20 to 20:00 UTC --------------------
     t0_ts, t1_ts = 19 + 20 / 60, 20.0
@@ -1066,7 +1071,7 @@ def convective_mixing():
     panel_height = 3.5          # top-row panel height (inches)
     skewt_width  = panel_height
     ts_height    = 2.5          # height of each time-series row
-    gap_height   = 0.4          # spacer row between top panels and time series
+    gap_height   = 0.1          # spacer row between top panels and time series
 
     fig_width  = skewt_width * 3
     fig_height = panel_height + 3 * ts_height + gap_height
