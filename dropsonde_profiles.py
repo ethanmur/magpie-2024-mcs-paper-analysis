@@ -501,24 +501,25 @@ def composite_plots():
     panel_size = 5.0   # inches (width = height for a SkewT)
     fig = plt.figure(figsize=(panel_size * 2 + 0.5, panel_size))
 
-    gs = GridSpec(1, 2, figure=fig, wspace=0.45)
+    gs = GridSpec(1, 2, figure=fig, wspace=0.2)
 
     make_composite_skewt(fig, gs[0, 0],
                          p_s, T_s, Td_s, u_s, v_s,
                          p_s_all, T_s_all, Td_s_all,
                          panel_label='a',
-                         title='Stratiform',
+                         title=f'Stratiform ({len(strat_indices)} Profiles)',
                          xlims=[15,30],
                          ylims=[1013., 660.])
 
-    make_composite_skewt(fig, gs[0, 1],
+    skew_conv = make_composite_skewt(fig, gs[0, 1],
                          p_c, T_c, Td_c, u_c, v_c,
                          p_c_all, T_c_all, Td_c_all,
                          panel_label='b',
-                         title='Convective',
+                         title=f'Convective ({len(conv_indices)} Profiles)',
                          add_leg=False,
                          xlims=[15,30],
                          ylims=[1013., 660.])
+    skew_conv.ax.set_ylabel('')   # shared pressure axis: label panel (a) only
 
     # --- save ----------------------------------------------------------------
     os.makedirs(path_figures, exist_ok=True)
@@ -634,10 +635,11 @@ def sal():
     # --- figure sizing -------------------------------------------------------
     panel_height = 3.5          # top-row panel height (inches)
     ts_height    = 2.5          # height of each time-series row
-    fig = plt.figure(figsize=(panel_height * 3, panel_height + 3 * ts_height))
+    gap_height   = 0.4          # spacer row between top panels and time series
+    fig = plt.figure(figsize=(panel_height * 3, panel_height + 3 * ts_height + gap_height))
 
-    gs = GridSpec(4, 3, figure=fig,
-                  height_ratios=[panel_height, ts_height, ts_height, ts_height],
+    gs = GridSpec(5, 3, figure=fig,
+                  height_ratios=[panel_height, gap_height, ts_height, ts_height, ts_height],
                   wspace=0.40, hspace=0.30)
 
     # --- panel (a): GOES RGB + flight-level RH scatter -----------------------
@@ -653,6 +655,8 @@ def sal():
                                 panel_label='a',
                                 label_x=0.05, label_y=0.95,
                                 time_x=0.95, time_y=0.95)
+    # test_plot's show_lat branch sets ylabel but skips xlabel; add it manually
+    ax_goes.set_xlabel("Longitude ($\\degree$)", fontsize=plt.rcParams['axes.labelsize'])
 
     # flight-level RH scatter
     sc = ax_goes.scatter(lon_sub[valid], lat_sub[valid], c=rh_sub[valid],
@@ -719,7 +723,7 @@ def sal():
     mr_fl, ta_fl = fl_data['MR.d'].values, fl_data['TA.d'].values
     the_fl, rh_fl = kp.flightlevel_rh_thetae(fl_data)
 
-    ax_d = fig.add_subplot(gs[1, :])
+    ax_d = fig.add_subplot(gs[2, :])
     _plot_fl_timeseries(
         ax_d, fl_time, var_left=u_fl,
         label_left='Wind components (m s$^{-1}$)', legend_label_left='U',
@@ -728,7 +732,7 @@ def sal():
         t_start=t0_ts, t_end=t1_ts, panel_label='d', sonde_ids=sondes_ts)
     ax_d.set_ylim([-6, 12])
 
-    ax_e = fig.add_subplot(gs[2, :])
+    ax_e = fig.add_subplot(gs[3, :])
     _plot_fl_timeseries(
         ax_e, fl_time, var_left=mr_fl,
         label_left='WVMR (g kg$^{-1}$)', color_left='royalblue',
@@ -736,7 +740,7 @@ def sal():
         t_start=t0_ts, t_end=t1_ts, panel_label='e', add_leg=False,
         sonde_ids=sondes_ts)
 
-    ax_f = fig.add_subplot(gs[3, :])
+    ax_f = fig.add_subplot(gs[4, :])
     _plot_fl_timeseries(
         ax_f, fl_time, var_left=the_fl,
         label_left='$\\theta_e$ (K)', color_left='darkgreen',
@@ -988,8 +992,9 @@ def _plot_fl_timeseries(ax, fl_time, var_left, label_left, color_left,
             
             # Calculate normalized x-coordinate for the text
             x_normalized = (decimal_hour - t_start) / (t_end - t_start)            
-            ax.text(x_normalized, 1.01, str(li), transform=ax.transAxes,
-                    ha='center', va='bottom', fontsize=10, clip_on=False)
+            if panel_label == 'd':   # number labels only atop panel (d); e/f too cluttered
+                ax.text(x_normalized, 1.01, str(li), transform=ax.transAxes,
+                        ha='center', va='bottom', fontsize=10, clip_on=False)
 
 
     return ax_r
@@ -1061,13 +1066,14 @@ def convective_mixing():
     panel_height = 3.5          # top-row panel height (inches)
     skewt_width  = panel_height
     ts_height    = 2.5          # height of each time-series row
+    gap_height   = 0.4          # spacer row between top panels and time series
 
     fig_width  = skewt_width * 3
-    fig_height = panel_height + 3 * ts_height
+    fig_height = panel_height + 3 * ts_height + gap_height
     fig = plt.figure(figsize=(fig_width, fig_height))
 
-    gs = GridSpec(4, 3, figure=fig,
-                  height_ratios=[panel_height, ts_height, ts_height, ts_height],
+    gs = GridSpec(5, 3, figure=fig,
+                  height_ratios=[panel_height, gap_height, ts_height, ts_height, ts_height],
                   wspace=0.40, hspace=0.30)
 
     label_fs = plt.rcParams['axes.labelsize']
@@ -1088,6 +1094,8 @@ def convective_mixing():
                                 panel_label='a',
                                 label_x=0.05, label_y=0.95,
                                 time_x=0.95, time_y=0.95)
+    # test_plot's show_lat branch sets ylabel but skips xlabel; add it manually
+    ax_goes.set_xlabel("Longitude ($\\degree$)", fontsize=plt.rcParams['axes.labelsize'])
     
     # plot P-3 flight track atop GOES image (clipped to t_start_fl → t_end_fl)
     starti = int(np.searchsorted(fl_time, t_start_fl))
@@ -1120,7 +1128,7 @@ def convective_mixing():
     skew17.ax.set_title('Dropsonde 17', fontsize=label_fs)
 
     # --- panel (d): vertical velocity + u/v winds ----------------------------
-    ax_d = fig.add_subplot(gs[1, :])   # span all 3 columns
+    ax_d = fig.add_subplot(gs[2, :])   # span all 3 columns
     _plot_fl_timeseries(
         ax_d, fl_time,
         var_left=u,
@@ -1135,7 +1143,7 @@ def convective_mixing():
     ax_d.set_ylim([-6,12])
 
     # --- panel (e): WVMR + temperature ---------------------------------------
-    ax_e = fig.add_subplot(gs[2, :])   # span all 3 columns
+    ax_e = fig.add_subplot(gs[3, :])   # span all 3 columns
     _plot_fl_timeseries(
         ax_e, fl_time,
         var_left=mr,
@@ -1151,7 +1159,7 @@ def convective_mixing():
     ax_e.set_ylim([8,16])
 
     # --- panel (f): theta-e + relative humidity ------------------------------
-    ax_f = fig.add_subplot(gs[3, :])   # span all 3 columns
+    ax_f = fig.add_subplot(gs[4, :])   # span all 3 columns
     _plot_fl_timeseries(
         ax_f, fl_time,
         var_left=the,

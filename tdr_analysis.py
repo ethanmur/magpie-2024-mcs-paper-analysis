@@ -231,10 +231,63 @@ def _decorate_ax(ax, lons, lats, panel_label=None, title=None):
 
 
 # oldlimits: (11, -54.0, 10.75, -53.5)
+def _stitch_offmcs_dbz(ax, path_pv, f_orig, f_new, level_km,
+                       buffer_km=5., dbz_thresh=10.):
+    """
+    Draw, on ax, the reflectivity of the off-MCS volume f_new at level_km with
+    the MCS (plus buffer_km) removed. The MCS mask is the largest contiguous
+    region of 2 km reflectivity >= dbz_thresh in the original-pass volume
+    f_orig; any f_new cell within buffer_km of it is dropped.
+    """
+    from scipy import ndimage
+    from scipy.spatial import cKDTree
+
+    pc = ccrs.PlateCarree()
+    ds_o = xr.open_dataset(path_pv + f_orig)
+    ds_n = xr.open_dataset(path_pv + f_new)
+
+    lev2 = int(np.argmin(np.abs(ds_o['level'].values - 2.)))
+    lat_o = ds_o['LATITUDE'].isel(time=0).values
+    lon_o = ds_o['LONGITUDE'].isel(time=0).values
+    dbz_o = ds_o['REFLECTIVITY'].isel(time=0, level=lev2).values
+    lab, nlab = ndimage.label(np.nan_to_num(dbz_o, nan=-999.) >= dbz_thresh,
+                              structure=np.ones((3, 3)))
+    sizes = ndimage.sum(np.ones_like(lab), lab, index=np.arange(1, nlab + 1))
+    mcs = lab == (1 + int(np.argmax(sizes)))
+
+    kx = 111.2 * np.cos(np.deg2rad(np.nanmean(lat_o)))
+    ky = 111.2
+    lat_n = ds_n['LATITUDE'].isel(time=0).values
+    lon_n = ds_n['LONGITUDE'].isel(time=0).values
+    tree = cKDTree(np.c_[lon_o[mcs] * kx, lat_o[mcs] * ky])
+    d_new, _ = tree.query(np.c_[lon_n.ravel() * kx, lat_n.ravel() * ky])
+    d_new = d_new.reshape(lat_n.shape)
+
+    lev_i = int(np.argmin(np.abs(ds_n['level'].values - level_km)))
+    dbz_n = ds_n['REFLECTIVITY'].isel(time=0, level=lev_i).values
+    dbz_n = np.where(dbz_n < -998., np.nan, dbz_n)
+    remaining = np.where(d_new > buffer_km, dbz_n, np.nan)
+
+    ext = ax.get_extent(crs=pc)
+    ax.contourf(lon_n, lat_n, remaining, levels=np.arange(0, 46, 2.5),
+                cmap='RdYlBu_r', extend='both', transform=pc)
+    ax.set_extent(ext, crs=pc)
+
+
 def tdr_radar_figure(cross_endpoints_1=(10.55, -54.3, 10.15, -53.7),
-                     cross_endpoints_2=(10.55, -54.3, 10.15, -53.7)):
+                     cross_endpoints_2=(10.55, -54.3, 10.15, -53.7),
+                     stitch_tdr_passes=True, stitch_buffer_km=5.):
     """
     Figure 4: 3 x 3 layout with GOES RGB background in every panel.
+
+    stitch_tdr_passes : bool
+        If True, the off-MCS reflectivity from the 1838 and 1957 volumes (MCS
+        masked out using the 1919 / 2030 volumes, plus a buffer; see
+        _stitch_offmcs_dbz) is stitched into the 2 km and 6 km reflectivity
+        panels of the Pass 2 and Pass 3 columns (map limits unchanged).
+    stitch_buffer_km : float
+        Buffer (km) around the MCS mask removed from the stitched volumes.
+
       Columns: TDR passes at 18:04, 19:19, 20:30 UTC
       Row 0:   Reflectivity + wind barbs at 2 km
       Row 1:   Reflectivity + wind barbs at 6 km
@@ -255,8 +308,17 @@ def tdr_radar_figure(cross_endpoints_1=(10.55, -54.3, 10.15, -53.7),
     """
     # lons = (-56.5, -51.5)
     # lats = (8,     13)
-    lons = (-55., -53.)
-    lats = (9., 12.)
+    if stitch_tdr_passes:
+        lons = (-55., -52.8)
+        lats = (9., 12.25)
+    else:
+        lons = (-55., -53.)
+        lats = (9., 12.)
+
+    # (original volume defining the MCS mask, off-MCS volume) stitched into each column
+    stitch_pairs = [None,
+                    ('240715I1_1919_xy.nc', '240715I1_1838_xy.nc'),
+                    ('240715I1_2030_xy.nc', '240715I1_1957_xy.nc')]
 
     path_pv   = path_data + "tdr/plan-view/"
     path_cls  = path_data + "tdr/precip-classifications/"
@@ -352,6 +414,10 @@ def tdr_radar_figure(cross_endpoints_1=(10.55, -54.3, 10.15, -53.7),
         if cf_dbz is None:
             cf_dbz = cf
 
+        if stitch_tdr_passes and stitch_pairs[col] is not None:
+            _stitch_offmcs_dbz(ax0, path_pv, *stitch_pairs[col], 2.,
+                               buffer_km=stitch_buffer_km)
+
         # P-3 flight track: only this column's own pass segment (col -> pass)
         (t0, t1), pass_color = radar_passes[col]
         seg = (fl_time >= t0) & (fl_time <= t1)
@@ -386,6 +452,10 @@ def tdr_radar_figure(cross_endpoints_1=(10.55, -54.3, 10.15, -53.7),
                               panel_label=panel_labels[1][col],
                               title=None,
                               show_barbs=(col != 0))   # Pass 1 wind data corrupted
+
+        if stitch_tdr_passes and stitch_pairs[col] is not None:
+            _stitch_offmcs_dbz(ax1, path_pv, *stitch_pairs[col], 6.,
+                               buffer_km=stitch_buffer_km)
 
         if col == 0:
             ax1.set_ylabel(f'{row_labels[1]}\nLatitude (°)', fontsize=label_fs)

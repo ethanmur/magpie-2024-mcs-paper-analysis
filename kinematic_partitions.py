@@ -537,7 +537,8 @@ def complete_partitions_contour_nice():
                 values = values * knots
             _plot_cfad_contour(ax, values, level, label, color=color, name=plabel)
 
-        _dual_legend(ax, _color_key_legend(list(zip(labels_use, colors_use))))
+        if letter == 'a':   # legend (percentile key + passes) on panel (a) only
+            _dual_legend(ax, _color_key_legend(list(zip(labels_use, colors_use))))
         ax.text(0.03, 0.96, f'({letter})', transform=ax.transAxes,
                 ha='left', va='top', fontsize=label_fs, zorder=20,
                 bbox=dict(facecolor='white', alpha=1., edgecolor='k',
@@ -758,12 +759,12 @@ def _fixed_bins(values, var):
 # ---------------------------------------------------------------------------
 
 # decimal-hour UTC windows (placeholders; adjust as needed)
-BUFFER_WINDOWS = [(19.4, 19.52), (19.825, 19.9)]
-SAL_WINDOWS    = [(19.52, 19.825)]
+BUFFER_WINDOWS = [(19.42, 19.49), (19.835, 19.9)]
+SAL_WINDOWS    = [(19.52, 19.835)]
 FL_PRES_VAR    = 'PS.c'   # corrected flight-level static pressure (mb); only in the full file
 FL_FULL_FILE   = '20240715I1_A.nc'
-BUFFER_COLOR   = 'goldenrod'
-SAL_COLOR      = 'saddlebrown'
+BUFFER_COLOR   = 'gold'
+SAL_COLOR      = 'orangered'
 
 
 def flightlevel_rh_thetae(fl):
@@ -800,10 +801,13 @@ def _window_mask(fl_time, windows):
     return mask
 
 
-def flightlevel_region_dists():
+def flightlevel_region_dists(show_east_west=False):
     """
     Figure 12: flight-level distributions of the four sampled regions
     (stratiform, convective, buffer zone, SAL) plotted atop one another.
+    show_east_west : if True, also plots the airmasses ahead of (East of MCS,
+    18.35-18.9 UTC; light grey) and behind (West of MCS, 19.9-20.25 UTC; dark
+    grey) the MCS, in the distributions, legend, and map.
     2 rows x 3 columns: (a) W, (b) mixing ratio, (c) T, (d) theta-e, (e) RH,
     plus (f) a GOES map of the flight track color-coded by region.
     theta-e and RH are recomputed from T, MR, p. Saves figure12.png.
@@ -816,21 +820,29 @@ def flightlevel_region_dists():
     fl = xr.open_dataset(FLIGHT_LEVEL_PATH + FLIGHT_LEVEL_FILE, decode_times=False)
     fl_time = build_time_array(fl, axis_type='decimal')
 
-    class_time, class_codes = _curtain_classification()
-    _, codes_upscaled = _upscale_to_flight_resolution(class_time, class_codes, fl_time)
+    # corrected classification: nearest TDR cell within a max distance, per pass window
+    codes_upscaled, _ = _masked_classification(fl_time, fl['LATref'].values,
+                                               fl['LONref'].values)
     ws_mask  = np.isin(codes_upscaled, WEAK_STRAT_CODES)
     cv_mask  = np.isin(codes_upscaled, CONVECTIVE_CODES)
     buf_mask = _window_mask(fl_time, BUFFER_WINDOWS)
     sal_mask = _window_mask(fl_time, SAL_WINDOWS)
 
-    # (mask, color, name, linewidth); later entries are drawn on top
+    # (mask, color, name, linestyle); same line width for all; later entries on top
     regions = [
-        (ws_mask,  'tab:blue',   'Weak Echo + Stratiform', 1.0),
-        (cv_mask,  'tab:red',    'Convective',             1.0),
-        (buf_mask, BUFFER_COLOR, 'Buffer zone',            2.0),
-        (sal_mask, SAL_COLOR,    'SAL',                    2.0),
+        (ws_mask,  'lightskyblue', 'Weak Echo + Stratiform', (0, (1, 1.2))),   # closely dotted
+        (cv_mask,  'navy',         'Convective',             (0, (1, 1.2))),
+        (buf_mask, BUFFER_COLOR,   'Buffer zone',            '-'),
+        (sal_mask, SAL_COLOR,      'SAL',                    '-'),
     ]
-    any_mask = ws_mask | cv_mask | buf_mask | sal_mask
+    if show_east_west:
+        east_mask = _window_mask(fl_time, [(18.35, 18.9)])
+        west_mask = _window_mask(fl_time, [(19.9, 20.25)])
+        regions += [(east_mask, '#b8b8b8', 'East of MCS', '-'),
+                    (west_mask, '#505050', 'West of MCS', '-')]
+    any_mask = np.zeros_like(ws_mask, dtype=bool)
+    for m, *_ in regions:
+        any_mask |= m
 
     variables = [
         ('UWZ.d',     'Vertical Velocity W (m s$^{-1}$)'),
@@ -852,13 +864,18 @@ def flightlevel_region_dists():
         bins = _fixed_bins(finite, var)
         centers = 0.5 * (bins[:-1] + bins[1:])
 
-        for mask, color, name, lw in regions:
+        for mask, color, name, ls in regions:
             vals = data[mask]
             vals = vals[np.isfinite(vals)]
             if vals.size == 0:
                 continue
             hist, _ = np.histogram(vals, bins=bins)
-            ax.plot(centers, hist / hist.sum(), color=color, lw=lw, label=name)
+            if var == 'RH':
+                # cumulative distribution (evaluated at upper bin edges)
+                ax.plot(bins[1:], np.cumsum(hist) / hist.sum(), color=color,
+                        lw=1.8, ls=ls, label=name)
+            else:
+                ax.plot(centers, hist / hist.sum(), color=color, lw=1.8, ls=ls, label=name)
 
         ax.set_xlabel(label, fontsize=13, labelpad=10)
         ax.set_ylabel('Probability', fontsize=13, labelpad=10)
@@ -868,8 +885,10 @@ def flightlevel_region_dists():
                 bbox=dict(facecolor='white', alpha=1., edgecolor='k',
                           linewidth=1.2, pad=4))
         if letter == 'e':
-            ax.set_ylim(0, 1.)   # RH piles up near 100% in convection
-        if letter in ('b', 'c', 'e'):
+            ax.set_ylim(0, 1.02)   # RH shown as a CDF (piles up near 100% in convection)
+            ax.set_ylabel('CDF Probability', fontsize=13, labelpad=10)
+            ax.set_xlim(0, 100)   # show the full RH range (empty values below ~20%)
+        if letter in ('b', 'c'):
             ax.set_ylabel('')
 
     # legend lives inside panel (a)
@@ -879,10 +898,11 @@ def flightlevel_region_dists():
     axs[1, 2].remove()
     pc = ccrs.PlateCarree()
     ax_map = fig.add_subplot(2, 3, 6, projection=pc)
-    lons_map, lats_map = (-58.5, -52.5), (8, 13)
-    path_goes = str(path_project) + "/data/goes-level2-cold pool dropsondes/"
+    lons_map, lats_map = (-55, -53), (9, 12.75)
+    # same GOES scene as figures 13 and 14 (goes-level2-tdr index 1, ~19:00 UTC)
+    path_goes = str(path_project) + "/data/goes-level2-tdr/"
     goes_files = synoptic_overview.pull_files_helper(path_goes)
-    ds_goes = synoptic_overview.data_subset(path_goes, goes_files[0], lats_map, lons_map)
+    ds_goes = synoptic_overview.data_subset(path_goes, goes_files[1], lats_map, lons_map)
     synoptic_overview.test_plot(ds_goes, channel='rgb', lats=lats_map, lons=lons_map,
                                 ax=ax_map, fig=fig, show_colorbar=False,
                                 show_lat=True, show_lon=True,
@@ -893,12 +913,283 @@ def flightlevel_region_dists():
 
     lon_fl, lat_fl = fl['LONref'].values, fl['LATref'].values
     ax_map.plot(lon_fl, lat_fl, color='w', lw=0.6, transform=pc, zorder=5)   # full track
-    for mask, color, name, lw in regions:
+    for mask, color, name, ls in regions:
         # NaN-out other samples so separate segments aren't joined by a line
         ax_map.plot(np.where(mask, lon_fl, np.nan), np.where(mask, lat_fl, np.nan),
-                    color=color, lw=lw + 1., transform=pc, zorder=10)
+                    color=color, lw=2.5, transform=pc, zorder=10)
 
     plt.tight_layout()
     plt.savefig(path_figures + 'figure12.png', dpi=300, bbox_inches='tight')
     plt.close(fig)
     print('Saved figure12.png')
+
+
+
+PLAN_VIEW_PATH = path_data + "tdr/plan-view/"
+
+
+def _masked_classification(fl_time, fl_lat, fl_lon, max_dist_km=2.5, pad_hr=0.):
+    """
+    Flight-track rainfall classification matched directly to the raw TDR
+    plan-view volumes, with a maximum-distance rejection.
+
+    For each pass (PASS_FILES / PASS_TIME_WINDOWS, widened by pad_hr), every
+    flight sample is matched to the nearest TDR grid cell that has a finite
+    classification. Samples farther than max_dist_km from that cell (i.e.
+    outside the scan swath) are left unclassified (NaN) instead of inheriting
+    the class of the nearest edge cell. lat/lon/class use the same alignment
+    as the figure-7 plotting code (no transposes).
+
+    Returns (codes, dist_km), each the length of fl_time; NaN outside the
+    pass windows.
+    """
+    from scipy.spatial import cKDTree
+
+    class_ds = xr.open_dataset(CLASS_PATH + CLASS_FILE)
+    codes = np.full(fl_time.shape, np.nan)
+    dist  = np.full(fl_time.shape, np.nan)
+    kx = 111.2 * np.cos(np.deg2rad(np.nanmean(fl_lat)))   # km per deg lon
+    ky = 111.2                                             # km per deg lat
+
+    for fname, (t0, t1) in zip(PASS_FILES, PASS_TIME_WINDOWS):
+        seg = ((fl_time >= t0 - pad_hr) & (fl_time <= t1 + pad_hr)
+               & np.isfinite(fl_lat) & np.isfinite(fl_lon))
+        if not np.any(seg):
+            continue
+        ds = xr.open_dataset(PLAN_VIEW_PATH + fname)
+        lat2d = ds['LATITUDE'].isel(time=0).values
+        lon2d = ds['LONGITUDE'].isel(time=0).values
+        cls = class_ds['rainfall_classification'].isel(
+            num_cases=FILE_NAMES.index(fname)).values
+        valid = np.isfinite(cls) & np.isfinite(lat2d) & np.isfinite(lon2d)
+
+        tree = cKDTree(np.c_[lon2d[valid] * kx, lat2d[valid] * ky])
+        d, idx = tree.query(np.c_[fl_lon[seg] * kx, fl_lat[seg] * ky])
+        c = cls[valid][idx].astype(float)
+        c[d > max_dist_km] = np.nan
+        codes[seg] = c
+        dist[seg]  = d
+    return codes, dist
+
+
+def tdr_class_check(pad_hr=0.25, max_dist_km=2.5):
+    """
+    Check of the flight-track classification used in figure 12.
+    3 rows (TDR passes 1-3, as in figure 7) x 4 columns:
+      1: figure-7 TDR rainfall classification with the P-3 track atop
+      2: classes pulled from the curtain file (original method)
+      3: distance from each flight sample to the nearest classified TDR cell
+      4: corrected classes (raw volumes, rejected beyond max_dist_km, pass windows only)
+    Tracks are shown for each pass window +/- pad_hr hours.
+    Saves to figures-v-temp-2026-11-09-tdr-class-check/tdr_class_check.png
+    """
+    import cartopy.crs as ccrs
+    import synoptic_overview
+    import tdr_analysis
+    from matplotlib.gridspec import GridSpec
+
+    out_dir = str(path_project) + "/figures-v-temp-2026-11-09-tdr-class-check/"
+    os.makedirs(out_dir, exist_ok=True)
+
+    lons, lats = (-55., -53.), (9., 12.)
+    pc = ccrs.PlateCarree()
+    path_goes = path_data + "goes-level2-tdr/"
+    pv_files  = ['240715I1_1804_xy.nc', '240715I1_1919_xy.nc', '240715I1_2030_xy.nc']
+    row_titles = ['Pass 1: 18:04 UTC', 'Pass 2: 19:19 UTC', 'Pass 3: 20:30 UTC']
+    class_indices = [0, 2, 4]
+
+    goes_files = synoptic_overview.pull_files_helper(path_goes)
+    tdr_datasets  = [xr.open_dataset(PLAN_VIEW_PATH + f) for f in pv_files]
+    class_ds      = xr.open_dataset(CLASS_PATH + CLASS_FILE)
+    goes_datasets = [synoptic_overview.data_subset(path_goes, f, lats, lons)
+                     for f in goes_files]
+    rain_cmap = tdr_analysis._rain_cmap()
+
+    fl = xr.open_dataset(FLIGHT_LEVEL_PATH + FLIGHT_LEVEL_FILE, decode_times=False)
+    fl_time = build_time_array(fl, axis_type='decimal')
+    fl_lat, fl_lon = fl['LATref'].values, fl['LONref'].values
+    class_time, class_codes = _curtain_classification()
+    _, codes_curtain = _upscale_to_flight_resolution(class_time, class_codes, fl_time)
+    codes_fixed, _ = _masked_classification(fl_time, fl_lat, fl_lon,
+                                            max_dist_km=max_dist_km)
+    _, dist_pad = _masked_classification(fl_time, fl_lat, fl_lon,
+                                         max_dist_km=max_dist_km, pad_hr=pad_hr)
+
+    asp = synoptic_overview._panel_aspect(lons, lats)
+    ph = 3.5
+    pw = ph * asp
+    cbar_w = 0.2
+    fig = plt.figure(figsize=(pw * 4 + cbar_w * 2, ph * 3))
+    gs = GridSpec(3, 6, figure=fig,
+                  width_ratios=[pw, pw, pw, cbar_w, pw, cbar_w],
+                  wspace=0.15, hspace=0.08)
+    label_fs = plt.rcParams['axes.labelsize']
+    col_titles = ['TDR classification', 'Curtain-pulled classes',
+                  'Distance to nearest TDR cell', 'Corrected classes']
+    gs_cols = [0, 1, 2, 4]
+    letters = 'abcdefghijkl'
+
+    sc_cls = sc_dist = None
+    for row, ((t0, t1), tdr_ds, goes_ds, ci, rtitle) in enumerate(
+            zip(PASS_TIME_WINDOWS, tdr_datasets, goes_datasets,
+                class_indices, row_titles)):
+        seg = (fl_time >= t0 - pad_hr) & (fl_time <= t1 + pad_hr)
+
+        for col in range(4):
+            ax = fig.add_subplot(gs[row, gs_cols[col]], projection=pc)
+            lab = letters[row * 4 + col]
+            title = col_titles[col] if row == 0 else None
+            if col == 0:
+                tdr_analysis._plot_class_panel(ax, class_ds, tdr_ds, ci, lons, lats,
+                                               rain_cmap, goes_ds=goes_ds,
+                                               panel_label=lab, title=title)
+                ax.plot(fl_lon[seg], fl_lat[seg], color='w', lw=1.5, zorder=6,
+                        transform=pc)
+            else:
+                tdr_analysis._plot_goes_background(ax, goes_ds)
+                tdr_analysis._decorate_ax(ax, lons, lats, panel_label=lab, title=title)
+                if col == 2:
+                    ok = seg & np.isfinite(dist_pad)
+                    sc_dist = ax.scatter(fl_lon[ok], fl_lat[ok], c=dist_pad[ok],
+                                         cmap='magma_r', vmin=0, vmax=10, s=8,
+                                         zorder=6, transform=pc, edgecolors='none')
+                else:
+                    codes = codes_curtain if col == 1 else codes_fixed
+                    nocls = seg & ~np.isfinite(codes)
+                    ax.scatter(fl_lon[nocls], fl_lat[nocls], c='0.6', s=4,
+                               zorder=5, transform=pc)
+                    cls = seg & np.isfinite(codes)
+                    sc_cls = ax.scatter(fl_lon[cls], fl_lat[cls], c=codes[cls],
+                                        cmap=rain_cmap, vmin=-0.5, vmax=4.5, s=8,
+                                        zorder=6, transform=pc, edgecolors='none')
+
+            ax.set_xlabel('')
+            if row < 2:
+                ax.set_xticklabels([])
+            else:
+                ax.set_xlabel('Longitude (°)', fontsize=label_fs)
+            if col == 0:
+                ax.set_ylabel(f'{rtitle}\nLatitude (°)', fontsize=label_fs)
+            else:
+                ax.set_ylabel('')
+                ax.set_yticklabels([])
+
+    cax_d = fig.add_subplot(gs[:, 3])
+    cb_d = fig.colorbar(sc_dist, cax=cax_d, orientation='vertical', extend='max')
+    cb_d.set_label('Distance to nearest TDR cell (km)', fontsize=label_fs)
+
+    cax_c = fig.add_subplot(gs[:, 5])
+    cb = fig.colorbar(sc_cls, cax=cax_c, orientation='vertical', ticks=[0, 1, 2, 3, 4])
+    cb.ax.set_yticklabels(['Weak Echo', 'Stratiform', 'Shallow Conv.',
+                           'Mod. Conv.', 'Strong Conv.'])
+    cb.set_label('Rainfall Classification', fontsize=label_fs)
+
+    plt.savefig(out_dir + 'tdr_class_check.png', dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    print('Saved tdr_class_check.png')
+
+
+def tdr_offmcs_mask_check(buffer_km=10., dbz_thresh=10., lons=(-56.5, -51.5),
+                          lats=(8., 13.)):
+    """
+    Test figure: mask the MCS out of the two off-MCS TDR volumes.
+    2 rows x 3 columns (2 km reflectivity):
+      row 1: 1919 volume -> mask applied to the 1838 volume
+      row 2: 2030 volume -> mask applied to the 1957 volume
+      col 1: original-pass reflectivity (MCS mask outline in white)
+      col 2: off-MCS pass reflectivity with the MCS mask (solid) and the
+             buffer (dashed) atop it
+      col 3: off-MCS reflectivity remaining after masking MCS + buffer
+    MCS mask = largest contiguous region of 2 km reflectivity >= dbz_thresh
+    in the original-pass volume. Saves to
+    figures-v-temp-2026-11-09-tdr-class-check/tdr_offmcs_mask_check.png
+    """
+    import cartopy.crs as ccrs
+    import tdr_analysis
+    import synoptic_overview
+    from scipy import ndimage
+    from scipy.spatial import cKDTree
+    from matplotlib.gridspec import GridSpec
+
+    out_dir = str(path_project) + "/figures-v-temp-2026-11-09-tdr-class-check/"
+    os.makedirs(out_dir, exist_ok=True)
+    pc = ccrs.PlateCarree()
+    pairs = [('240715I1_1919_xy.nc', '240715I1_1838_xy.nc'),
+             ('240715I1_2030_xy.nc', '240715I1_1957_xy.nc')]
+    names = [('1919 UTC', '1838 UTC'), ('2030 UTC', '1957 UTC')]
+    kx = 111.2 * np.cos(np.deg2rad(0.5 * (lats[0] + lats[1])))
+    ky = 111.2
+
+    def _load2km(fname):
+        ds = xr.open_dataset(PLAN_VIEW_PATH + fname)
+        lev = int(np.argmin(np.abs(ds['level'].values - 2.)))
+        lat2d = ds['LATITUDE'].isel(time=0).values
+        lon2d = ds['LONGITUDE'].isel(time=0).values
+        dbz = ds['REFLECTIVITY'].isel(time=0, level=lev).values
+        dbz = np.where(dbz < -998., np.nan, dbz)
+        in_dom = ((lon2d >= lons[0]) & (lon2d <= lons[1]) &
+                  (lat2d >= lats[0]) & (lat2d <= lats[1]))
+        return lat2d, lon2d, np.where(in_dom, dbz, np.nan)
+
+    asp = synoptic_overview._panel_aspect(lons, lats)
+    ph = 3.5
+    pw = ph * asp
+    cbar_w = 0.2
+    fig = plt.figure(figsize=(pw * 3 + cbar_w, ph * 2))
+    gs = GridSpec(2, 4, figure=fig, width_ratios=[pw, pw, pw, cbar_w],
+                  wspace=0.12, hspace=0.08)
+    label_fs = plt.rcParams['axes.labelsize']
+    col_titles = ['Original pass', 'Off-MCS pass + MCS mask',
+                  f'Off-MCS pass, MCS + {buffer_km:.0f} km buffer removed']
+    levels_dbz = np.arange(0, 46, 2.5)
+    letters = 'abcdef'
+    cf = None
+
+    for row, ((f_orig, f_new), (n_orig, n_new)) in enumerate(zip(pairs, names)):
+        lat_o, lon_o, dbz_o = _load2km(f_orig)
+        lat_n, lon_n, dbz_n = _load2km(f_new)
+
+        # MCS mask: largest contiguous region of echo >= dbz_thresh
+        lab, nlab = ndimage.label(np.nan_to_num(dbz_o, nan=-999.) >= dbz_thresh,
+                                  structure=np.ones((3, 3)))
+        sizes = ndimage.sum(np.ones_like(lab), lab, index=np.arange(1, nlab + 1))
+        mcs = lab == (1 + int(np.argmax(sizes)))
+
+        # distance (km) from every off-MCS cell to the nearest MCS cell
+        tree = cKDTree(np.c_[lon_o[mcs] * kx, lat_o[mcs] * ky])
+        d_new, _ = tree.query(np.c_[lon_n.ravel() * kx, lat_n.ravel() * ky])
+        d_new = d_new.reshape(lat_n.shape)
+        remaining = np.where(d_new > buffer_km, dbz_n, np.nan)
+
+        panels = [(lat_o, lon_o, dbz_o, n_orig), (lat_n, lon_n, dbz_n, n_new),
+                  (lat_n, lon_n, remaining, n_new)]
+        for col, (la, lo, dbz, nm) in enumerate(panels):
+            ax = fig.add_subplot(gs[row, col], projection=pc)
+            cf = ax.contourf(lo, la, dbz, levels=levels_dbz, cmap='RdYlBu_r',
+                             extend='both', transform=pc)
+            tdr_analysis._decorate_ax(ax, lons, lats, panel_label=letters[row * 3 + col],
+                                      title=col_titles[col] if row == 0 else None)
+            if col < 2:   # MCS mask outline (from the original pass)
+                ax.contour(lon_o, lat_o, mcs.astype(float), levels=[0.5],
+                           colors='k', linewidths=1.2, transform=pc, zorder=8)
+            if col == 1:  # buffer edge on the off-MCS grid
+                ax.contour(lon_n, lat_n, d_new, levels=[buffer_km], colors='k',
+                           linewidths=1.2, linestyles='--', transform=pc, zorder=8)
+            ax.set_xlabel('')
+            if row < 1:
+                ax.set_xticklabels([])
+            else:
+                ax.set_xlabel('Longitude (°)', fontsize=label_fs)
+            if col == 0:
+                ax.set_ylabel(f'{n_orig} mask -> {n_new}\nLatitude (°)', fontsize=label_fs)
+            else:
+                ax.set_ylabel('')
+                ax.set_yticklabels([])
+
+    cax = fig.add_subplot(gs[:, 3])
+    cb = fig.colorbar(cf, cax=cax, orientation='vertical', extend='both')
+    cb.set_label('2 km TDR Reflectivity (dBZ)', fontsize=label_fs)
+
+    plt.savefig(out_dir + 'tdr_offmcs_mask_check.png', dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    print('Saved tdr_offmcs_mask_check.png')
