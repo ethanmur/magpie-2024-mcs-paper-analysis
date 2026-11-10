@@ -142,3 +142,15 @@ kinematic_partitions.tdr_class_check()
 #%%
 # Check: MCS mask applied to the off-MCS passes (1838, 1957)
 kinematic_partitions.tdr_offmcs_mask_check()
+
+#%%
+# Check: spectral analysis of buffer zone / SAL flight-level moisture (spikes?)
+kinematic_partitions.flightlevel_sal_buffer_spectra()
+
+# %%
+
+#%%
+# Test: candidate cold-top IR colormaps (figure 2 zoom panel)
+synoptic_overview.ir_cmap_test()
+
+# %%

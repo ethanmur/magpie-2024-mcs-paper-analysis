@@ -867,16 +867,11 @@ def plot_tdr_curtains(convective_axis_deg=None, add_barbs=False, add_vort=False,
                     bbox=dict(facecolor='white', alpha=1.,
                               edgecolor='k', linewidth=1.2, pad=4))
 
-            # mark where the across-axis cross-section cuts the flight track
-            if cross_x is not None:
-                ax.axvline(x=cross_x, color='firebrick', ls='--', lw=1.4, zorder=4)
-                if ax is ax_a:
-                    xn_cross = (cross_x - xlim_lo) / (xlim_hi - xlim_lo)
-                    ax.text(xn_cross, 1.01, 'x', color='red', fontsize=12,
-                            fontweight='bold', transform=ax.transAxes,
-                            ha='center', va='bottom', zorder=21, clip_on=False)
+            # (across-axis cross-section line + 'x' marker removed: no longer shown)
 
             for li, launch_time in enumerate(drops.launch_time.values):
+                if li in (14, 15):   # not discussed in the text
+                    continue
                 ts  = pd.Timestamp(launch_time)
                 dh  = ts.hour + ts.minute / 60. + ts.second / 3600.
                 if starth <= dh <= endh:
@@ -1047,7 +1042,7 @@ def plot_tdr_statistics():
         valid = res['total'] > 0
         ax_f.plot(res['total'][valid], res['levels'][valid],
                   color=pass_colors[pass_name], lw=2, label=pass_name)
-    ax_f.set_xlabel('Total Cell Area (km²)', fontsize=label_fs)
+    ax_f.set_xlabel('Total MCS Area (km$^2$)', fontsize=label_fs)
     ax_f.set_ylabel('Height (km)',     fontsize=label_fs)
     ax_f.tick_params(labelsize=tick_fs)
     ax_f.grid(True, alpha=0.3)
@@ -1065,7 +1060,7 @@ def plot_tdr_statistics():
         valid = res['conv'] > 0
         ax_g.plot(res['conv'][valid], res['levels'][valid],
                   color=pass_colors[pass_name], lw=2, label=pass_name)
-    ax_g.set_xlabel('Convective Cell Area (km²)', fontsize=label_fs)
+    ax_g.set_xlabel('Convective Area (km$^2$)', fontsize=label_fs)
     ax_g.set_ylabel('',               fontsize=label_fs)
     ax_g.tick_params(labelsize=tick_fs)
     ax_g.legend(fontsize=tick_fs)
@@ -1084,7 +1079,7 @@ def plot_tdr_statistics():
         valid = res['strat'] > 0
         ax_h.plot(res['strat'][valid], res['levels'][valid],
                   color=pass_colors[pass_name], lw=2, label=pass_name)
-    ax_h.set_xlabel('Stratiform Cell Area (km²)', fontsize=label_fs)
+    ax_h.set_xlabel('Stratiform Area (km$^2$)', fontsize=label_fs)
     ax_h.set_ylabel('',               fontsize=label_fs)
     ax_h.tick_params(labelsize=tick_fs)
     ax_h.grid(True, alpha=0.3)

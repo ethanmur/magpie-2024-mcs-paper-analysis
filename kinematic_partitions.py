@@ -523,7 +523,7 @@ def complete_partitions_contour_nice():
     label_fs    = plt.rcParams['axes.labelsize']
 
     panels = [('REFLECTIVITY', 'TDR Reflectivity (dBZ)', 'a'),
-              ('W',            'Vertical Velocity W (kt)', 'b')]
+              ('W',            'Vertical Velocity W (m s$^{-1}$)', 'b')]
 
     fig, axs = plt.subplots(1, 2, figsize=(11, 5), sharey=True)
     for ax, (var, label, letter) in zip(axs, panels):
@@ -533,8 +533,7 @@ def complete_partitions_contour_nice():
 
         for pd_, plabel, color in zip(pass_data_use, labels_use, colors_use):
             values, level = _grouped_values([pd_], var, all_codes, None, None)
-            if var != 'REFLECTIVITY':
-                values = values * knots
+            # W stays in m/s (raw TDR units); no knots conversion
             _plot_cfad_contour(ax, values, level, label, color=color, name=plabel)
 
         if letter == 'a':   # legend (percentile key + passes) on panel (a) only

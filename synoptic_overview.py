@@ -221,6 +221,41 @@ def build_custom_cmap():
     return combined_cmap
 
 
+COLD_TOP_TMAX = -20.   # deg C; IR warmer than this is drawn white (cold_tops styles)
+COLD_TOP_TMIN = -80.   # deg C; coldest color
+
+# ir_cmap options that use the white base + colored cold tops
+COLD_TOP_STYLES = ('cold_tops', 'cold_tops_turbo', 'cold_tops_bands')
+
+
+def get_cold_top_style(style='cold_tops'):
+    """
+    Return (cmap, norm, ticks) for the cold-top IR styles. All use a light-grey
+    base (set_over) for T > COLD_TOP_TMAX and saturate below COLD_TOP_TMIN.
+      'cold_tops'       : builtin RdYlBu, red coldest (continuous)
+      'cold_tops_turbo' : builtin turbo, reversed so the coldest is dark red
+                          and moderate cold tops are blue/cyan/green (continuous)
+      'cold_tops_bands' : discrete 10 degC bands (pale blue -> blue -> yellow ->
+                          orange -> red -> maroon) to separate moderate from
+                          very cold convection
+    """
+    from matplotlib.colors import BoundaryNorm, ListedColormap, Normalize
+    if style == 'cold_tops_bands':
+        # warm -> cold, 10 degC bands from COLD_TOP_TMAX down to COLD_TOP_TMIN
+        colors = ['#9ecae1', '#08519c', '#fee08b', '#fd8d3c', '#e31a1c', '#7f0000']
+        bounds = np.arange(COLD_TOP_TMIN, COLD_TOP_TMAX + 1, 10)   # ascending
+        cmap = ListedColormap(colors[::-1])                        # coldest first
+        cmap.set_under('k')
+        cmap.set_over('white')
+        norm = BoundaryNorm(bounds, cmap.N)
+        return cmap, norm, bounds
+    base = 'turbo_r' if style == 'cold_tops_turbo' else 'RdYlBu'
+    cmap = plt.get_cmap(base).copy()
+    cmap.set_over('white')
+    norm = Normalize(vmin=COLD_TOP_TMIN, vmax=COLD_TOP_TMAX)
+    return cmap, norm, np.arange(COLD_TOP_TMIN, COLD_TOP_TMAX + 1, 10)
+
+
 def id_mt_itcz_aews(input_time, use_raw_aew_tracks=False):
     path = "/Users/ethanmurray/files-research-postdoc/papers/2026-magpie-convection/2026-magpie-figures/data/itcz-mt-centers-will-downs/"
     centers = xr.open_dataset(path + 'itcz_mt_centers.nc')
@@ -279,7 +314,8 @@ def test_plot(ds, channel='rgb', lats=[], lons=[], fill_with_ir=False,
               panel_label=None, cax=None,
               label_x=0.02, label_y=0.97,
               time_x=0.98, time_y=0.97,
-              legend_loc='upper left'):
+              legend_loc='upper left',
+              ir_cmap='classic'):
     """
     Plot a GOES satellite panel.
 
@@ -293,7 +329,12 @@ def test_plot(ds, channel='rgb', lats=[], lons=[], fill_with_ir=False,
       show_title_banner – show the GOES / channel title text above the panel
       show_time        – overlay scan-time string inside the upper portion of the panel
       panel_label      – single character placed in upper-left corner, e.g. 'a'
+      ir_cmap          – IR colormap style: 'classic' (original grey + spectral,
+                         190-305 K) or one of COLD_TOP_STYLES (white base, colored
+                         only below COLD_TOP_TMAX; see get_cold_top_style)
     """
+
+    is_cold = ir_cmap in COLD_TOP_STYLES
 
     title_fs = plt.rcParams['axes.labelsize']
     label_fs = plt.rcParams['axes.labelsize']
@@ -313,8 +354,6 @@ def test_plot(ds, channel='rgb', lats=[], lons=[], fill_with_ir=False,
     # ---- satellite imagery -------------------------------------------------
     if channel == 'ir':
         cleanIR = ds['CMI_C13'].data
-        combined_cmap = build_custom_cmap()
-
         x, y = ds.lon.values, ds.lat.values
         x = np.where(np.isfinite(x), x, 0)
         y = np.where(np.isfinite(y), y, 0)
@@ -322,11 +361,20 @@ def test_plot(ds, channel='rgb', lats=[], lons=[], fill_with_ir=False,
         cleanIR = np.where(coord_mask, cleanIR, np.nan)
 
         cleanIR = cleanIR - 273.15   # K → °C
-        p = ax.pcolormesh(x, y, cleanIR, transform=ccrs.PlateCarree(),
-                          vmin=190. - 273.15, vmax=305. - 273.15, cmap=combined_cmap)
+        if is_cold:
+            ct_cmap, ct_norm, ct_ticks = get_cold_top_style(ir_cmap)
+            p = ax.pcolormesh(x, y, cleanIR, transform=ccrs.PlateCarree(),
+                              cmap=ct_cmap, norm=ct_norm)
+        else:
+            p = ax.pcolormesh(x, y, cleanIR, transform=ccrs.PlateCarree(),
+                              vmin=190. - 273.15, vmax=305. - 273.15,
+                              cmap=build_custom_cmap())
 
         if show_colorbar:
-            tick_values = np.arange(-110, 36, 20)   # °C ticks matching original K spacing
+            if is_cold:
+                tick_values = ct_ticks
+            else:
+                tick_values = np.arange(-110, 36, 20)   # °C ticks matching original K spacing
             if cax is not None:
                 cbar = fig.colorbar(p, cax=cax, ticks=tick_values, extend='both')
                 cbar.set_label('IR $T_b$ (°C)')
@@ -382,16 +430,19 @@ def test_plot(ds, channel='rgb', lats=[], lons=[], fill_with_ir=False,
         # build points for line here- vertical on one lon
 
         lw = 2.
+        # darker overlay colors on the light-grey cold_tops base map
+        aew_c  = 'steelblue'  if is_cold else 'lightskyblue'
+        itcz_c = 'mediumblue' if is_cold else 'cornflowerblue'
 
         # cycle through aew objects for plotting
         for aewi in range(len(aews[0])):
             lon_line = [aews[0][aewi], aews[0][aewi]]
             lat_line = [aews[1][aewi] - 3, aews[1][aewi] + 3]
             if aewi==0:
-                ax.plot(lon_line, lat_line, c='lightskyblue', transform=ccrs.PlateCarree(),
+                ax.plot(lon_line, lat_line, c=aew_c, transform=ccrs.PlateCarree(),
                         lw=lw, ls='--', label='AEWs')
             else:
-                ax.plot(lon_line, lat_line, c='lightskyblue', transform=ccrs.PlateCarree(),
+                ax.plot(lon_line, lat_line, c=aew_c, transform=ccrs.PlateCarree(),
                         lw=lw, ls='--')
 
             print((lon_line, lat_line))
@@ -401,31 +452,21 @@ def test_plot(ds, channel='rgb', lats=[], lons=[], fill_with_ir=False,
         #            cmap=combined_cmap, edgecolors='w',
         #            s=50, marker='*', vmin=190., vmax=305.) #, label='AEW Centers')
         ax.scatter(aews[0], aews[1], transform=ccrs.PlateCarree(),
-                           edgecolor='b', facecolor='lightskyblue',
+                           edgecolor='b', facecolor=aew_c,
                            s=70, marker='o', linewidths=1., zorder=10000)
                 
         ax.plot(mts[0],   mts[1],   lw=lw, transform=ccrs.PlateCarree(),
                 c='darkorange',    label='MT')
         ax.plot(itczs[0], itczs[1], lw=lw, transform=ccrs.PlateCarree(),
-                c='cornflowerblue', label='ITCZ')
+                c=itcz_c, label='ITCZ')
 
         # convection domain box
         lonstemp = (-57., -51.)
         latstemp = (6, 12)
         bx = [lonstemp[0], lonstemp[0], lonstemp[1], lonstemp[1], lonstemp[0]]
         by = [latstemp[0], latstemp[1], latstemp[1], latstemp[0], latstemp[0]]
-        ax.plot(bx, by, color='limegreen', ls='--', linewidth=lw,
-                transform=ccrs.PlateCarree(), label='Domain 1')
-
-        # lonstemp = (-60., -50)
-        # latstemp = (6, 16)
-        lonstemp = (-59., -49)
-        latstemp = (4.5, 14)
-
-        bx = [lonstemp[0], lonstemp[0], lonstemp[1], lonstemp[1], lonstemp[0]]
-        by = [latstemp[0], latstemp[1], latstemp[1], latstemp[0], latstemp[0]]
-        ax.plot(bx, by, color='w', ls='--', linewidth=lw, # crimson limegreen
-                transform=ccrs.PlateCarree(), label='Domain 2')
+        ax.plot(bx, by, color='k', ls='--', linewidth=lw,
+                transform=ccrs.PlateCarree(), label='_nolegend_')
 
         ax.legend(loc=legend_loc, fancybox=False, shadow=False,
                   facecolor='lightgrey', edgecolor='k', framealpha=1, ncols=3,
@@ -433,7 +474,9 @@ def test_plot(ds, channel='rgb', lats=[], lons=[], fill_with_ir=False,
 
     # ---- map features ------------------------------------------------------
     ax.set_extent([lons[0], lons[1], lats[0], lats[1]], crs=ccrs.PlateCarree())
-    ax.add_feature(cfeature.COASTLINE, edgecolor='w')
+    # white coastlines vanish on the light-grey cold_tops base map
+    coast_color = 'k' if (channel == 'ir' and is_cold) else 'w'
+    ax.add_feature(cfeature.COASTLINE, edgecolor=coast_color)
     #ax.add_feature(cfeature.BORDERS, linestyle=':')
 
     pc = ccrs.PlateCarree()
@@ -579,12 +622,85 @@ def convection():
                       add_itcz_mt_aews=False)
 
 
+ERA5_3D_PATH_FMT = '/Users/ethanmurray/files-research-postdoc/data/aew/era5/era5_tropical_atlantic_{date}_3d.nc'
+_ERA5_CACHE = {}
+
+
+def _first_present(ds, names):
+    """First of `names` that is a dim/coord/variable of ds (ERA5 downloads differ in naming)."""
+    for n in names:
+        if n in ds.variables or n in ds.dims:
+            return n
+    raise KeyError(f'none of {names} found in ERA5 file ({list(ds.variables)})')
+
+
+def _era5_winds(level_hpa, when='2024-07-15T18:00'):
+    """
+    ERA5 (u, v) at one pressure level and the time nearest `when`.
+    Returns lon (1-D, -180..180), lat (1-D), u, v (m/s; 2-D lat x lon).
+    """
+    key = (level_hpa, when)
+    if key in _ERA5_CACHE:
+        return _ERA5_CACHE[key]
+
+    ds = xr.open_dataset(ERA5_3D_PATH_FMT.format(date=when[:10].replace('-', '')))
+    tname = _first_present(ds, ('valid_time', 'time'))
+    lvname = _first_present(ds, ('pressure_level', 'level', 'isobaricInhPa'))
+    lonname = _first_present(ds, ('longitude', 'lon'))
+    latname = _first_present(ds, ('latitude', 'lat'))
+    uname = _first_present(ds, ('u', 'u_component_of_wind'))
+    vname = _first_present(ds, ('v', 'v_component_of_wind'))
+
+    lev_target = level_hpa * 100. if float(ds[lvname].max()) > 2000. else float(level_hpa)
+    sub = ds.sel({tname: np.datetime64(when), lvname: lev_target}, method='nearest')
+    u = sub[uname].transpose(latname, lonname).values
+    v = sub[vname].transpose(latname, lonname).values
+    lon = ds[lonname].values.astype(float)
+    lat = ds[latname].values.astype(float)
+    lon = np.where(lon > 180., lon - 360., lon)
+    out = (lon, lat, u, v)
+    _ERA5_CACHE[key] = out
+    return out
+
+
+def _add_era5_barbs(ax, lons, lats, level_hpa, nbarbs=(14, 5), color='w',
+                    label=True, when='2024-07-15T18:00'):
+    """
+    Overlay a thinned set of ERA5 wind barbs (knots) at level_hpa on a
+    PlateCarree axes at ERA5 hour `when` (file chosen by date). nbarbs = approximate (n_lon, n_lat) barbs across the
+    domain, taken at the nearest grid points to evenly spaced bin centers (padded half
+    a spacing from each edge) to keep the panel readable.
+    """
+    pc = ccrs.PlateCarree()
+    lon, lat, u, v = _era5_winds(level_hpa, when)
+
+    # barb positions: centers of nbarbs equal-width bins across the domain, so the
+    # first/last barbs sit half a barb-spacing in from the edge (no clipped barbs)
+    tx = lons[0] + (np.arange(nbarbs[0]) + 0.5) * (lons[1] - lons[0]) / nbarbs[0]
+    ty = lats[0] + (np.arange(nbarbs[1]) + 0.5) * (lats[1] - lats[0]) / nbarbs[1]
+    ix = np.abs(lon[:, None] - tx[None, :]).argmin(axis=0)
+    iy = np.abs(lat[:, None] - ty[None, :]).argmin(axis=0)
+    LON, LAT = np.meshgrid(lon[ix], lat[iy])
+    U = u[np.ix_(iy, ix)] * 1.944   # m/s -> kt
+    V = v[np.ix_(iy, ix)] * 1.944
+
+    ax.barbs(LON, LAT, U, V, length=5, linewidth=0.9, color=color,
+             pivot='middle', transform=pc, zorder=2000000.)   # above domain boxes (zorder 1e6)
+    if label:
+        ax.text(0.02, 0.03, f'ERA5 {level_hpa:.0f} hPa winds', transform=ax.transAxes,
+                ha='left', va='bottom', fontsize=8, zorder=3000000.,
+                bbox=dict(facecolor='white', alpha=1., edgecolor='k',
+                          linewidth=0.8, pad=2))
+
+
 def plot_sal_rgb(ax, fig, ds_syn, sal_ds, lats, lons,
                 panel_label=None, cax=None,
                 label_x=0.02, label_y=0.92,
                 time_x=0.97, time_y=0.92,
-                draw_domain_boxes=True):
-    """Panel b: GOES RGB background with SAL dust features overlaid."""
+                draw_domain_boxes=True,
+                wind_level_hpa=None, nbarbs=(14, 6), wind_label=True):
+    """Panel b: GOES RGB background with SAL dust features overlaid.
+    wind_level_hpa : if given, overlay thinned ERA5 wind barbs at that level."""
     pc = ccrs.PlateCarree()
 
     # RGB base layer — reuse test_plot for the GOES imagery + map features
@@ -612,9 +728,12 @@ def plot_sal_rgb(ax, fig, ds_syn, sal_ds, lats, lons,
     if panel_label is not None:
         ax.text(label_x, label_y, f'({panel_label})',
                 transform=ax.transAxes, ha='left', va='top',
-                fontsize=label_fs,
+                fontsize=label_fs, zorder=3000000.,   # above wind barbs
                 bbox=dict(facecolor='white', alpha=1., edgecolor='k', linewidth=1.2, pad=4))
 
+
+    if wind_level_hpa is not None:
+        _add_era5_barbs(ax, lons, lats, wind_level_hpa, nbarbs, label=wind_label)
 
     if draw_domain_boxes:
         lw = 2.
@@ -622,22 +741,18 @@ def plot_sal_rgb(ax, fig, ds_syn, sal_ds, lats, lons,
         latstemp = (6, 12)
         bx = [lonstemp[0], lonstemp[0], lonstemp[1], lonstemp[1], lonstemp[0]]
         by = [latstemp[0], latstemp[1], latstemp[1], latstemp[0], latstemp[0]]
-        ax.plot(bx, by, color='limegreen', ls='--', linewidth=lw,
-                transform=ccrs.PlateCarree(), label='Domain 1', zorder=1000000.)
-
-        lonstemp = (-59., -49)
-        latstemp = (4.5, 14)
-        bx = [lonstemp[0], lonstemp[0], lonstemp[1], lonstemp[1], lonstemp[0]]
-        by = [latstemp[0], latstemp[1], latstemp[1], latstemp[0], latstemp[0]]
-        ax.plot(bx, by, color='w', ls='--', linewidth=lw,
-                transform=ccrs.PlateCarree(), label='Domain 2', zorder=1000000.)
+        ax.plot(bx, by, color='k', ls='--', linewidth=lw,
+                transform=ccrs.PlateCarree(), label='_nolegend_', zorder=1000000.)
         
 
 def plot_tpw(ax, fig, tpw_ds, lats, lons,
              panel_label=None, cax=None,
              label_x=0.02, label_y=0.92,
-             time_x=0.97, time_y=0.92):
-    """Panel c: MIMIC-TPW."""
+             time_x=0.97, time_y=0.92,
+             wind_level_hpa=None, nbarbs=(14, 5), wind_label=True,
+             draw_domain_box=True):
+    """Panel c: MIMIC-TPW.
+    wind_level_hpa : if given, overlay thinned ERA5 wind barbs at that level."""
     pc = ccrs.PlateCarree()
     tick_fs = plt.rcParams['xtick.labelsize']
     label_fs = plt.rcParams['axes.labelsize']
@@ -667,27 +782,21 @@ def plot_tpw(ax, fig, tpw_ds, lats, lons,
     if panel_label is not None:
         ax.text(label_x, label_y, f'({panel_label})',
                 transform=ax.transAxes, ha='left', va='top',
-                fontsize=label_fs,
+                fontsize=label_fs, zorder=3000000.,   # above wind barbs
                 bbox=dict(facecolor='white', alpha=1., edgecolor='k', linewidth=1.2, pad=4))
 
-    # 2 domain boxes here
-    lw = 2.
-    lonstemp = (-57., -51.)
-    latstemp = (6, 12)
-    bx = [lonstemp[0], lonstemp[0], lonstemp[1], lonstemp[1], lonstemp[0]]
-    by = [latstemp[0], latstemp[1], latstemp[1], latstemp[0], latstemp[0]]
-    ax.plot(bx, by, color='limegreen', ls='--', linewidth=lw,
-            transform=ccrs.PlateCarree(), label='Domain 1')
+    if wind_level_hpa is not None:
+        _add_era5_barbs(ax, lons, lats, wind_level_hpa, nbarbs, label=wind_label)
 
-    # lonstemp = (-60., -50)
-    # latstemp = (6, 16)
-    lonstemp = (-59., -49)
-    latstemp = (4.5, 14)
-
-    bx = [lonstemp[0], lonstemp[0], lonstemp[1], lonstemp[1], lonstemp[0]]
-    by = [latstemp[0], latstemp[1], latstemp[1], latstemp[0], latstemp[0]]
-    ax.plot(bx, by, color='w', ls='--', linewidth=lw, # crimson limegreen
-            transform=ccrs.PlateCarree(), label='Domain 2')
+    # domain box (omitted on the zoom panel, where it would trace the panel edge)
+    if draw_domain_box:
+        lw = 2.
+        lonstemp = (-57., -51.)
+        latstemp = (6, 12)
+        bx = [lonstemp[0], lonstemp[0], lonstemp[1], lonstemp[1], lonstemp[0]]
+        by = [latstemp[0], latstemp[1], latstemp[1], latstemp[0], latstemp[0]]
+        ax.plot(bx, by, color='k', ls='--', linewidth=lw,
+                transform=ccrs.PlateCarree(), label='_nolegend_')
 
 
 def combined_figure():
@@ -762,7 +871,8 @@ def combined_figure():
               panel_label='a',
               label_x=0.02, label_y=0.92,
               time_x=0.97, time_y=0.92,
-              legend_loc='lower right')
+              legend_loc='lower right',
+              ir_cmap='cold_tops_bands')
 
     # ---- panel (b): zoom IR — no time label, no lat ylabel -------------------
     cax_ir_z = ax_ir_z.inset_axes([1.03, 0.05, 0.055, 0.90])
@@ -774,7 +884,8 @@ def combined_figure():
               show_title_banner=False, show_time=False,
               panel_label='b',
               label_x=0.05, label_y=0.95,
-              time_x=0.95, time_y=0.95)
+              time_x=0.95, time_y=0.95,
+              ir_cmap='cold_tops_bands')
     ax_ir_z.set_ylabel('')
 
     # ---- panel (c): synoptic RGB + SAL overlay (with domain boxes) -----------
@@ -784,7 +895,8 @@ def combined_figure():
                  cax=None,
                  label_x=0.02, label_y=0.92,
                  time_x=0.97, time_y=0.92,
-                 draw_domain_boxes=True)
+                 draw_domain_boxes=True,
+                 wind_level_hpa=600, nbarbs=(14, 6))
 
     # ---- panel (d): zoom RGB + SAL — no boxes, no lat ylabel -----------------
     plot_sal_rgb(ax_sal_z, fig, ds_conv, sal_ds,
@@ -793,7 +905,8 @@ def combined_figure():
                  cax=None,
                  label_x=0.05, label_y=0.95,
                  time_x=0.95, time_y=0.95,
-                 draw_domain_boxes=False)
+                 draw_domain_boxes=False,
+                 wind_level_hpa=600, nbarbs=(5, 5), wind_label=False)
     ax_sal_z.set_ylabel('')
 
     # ---- panel (e): synoptic TPW — no colorbar -------------------------------
@@ -802,7 +915,8 @@ def combined_figure():
              panel_label='e',
              cax=None,
              label_x=0.02, label_y=0.92,
-             time_x=0.97, time_y=0.92)
+             time_x=0.97, time_y=0.92,
+             wind_level_hpa=925, nbarbs=(14, 6))
 
     # ---- panel (f): zoom TPW — no lat ylabel ---------------------------------
     cax_tpw_z = ax_tpw_z.inset_axes([1.03, 0.05, 0.055, 0.90])
@@ -811,7 +925,9 @@ def combined_figure():
              panel_label='f',
              cax=cax_tpw_z,
              label_x=0.05, label_y=0.95,
-             time_x=0.95, time_y=0.95)
+             time_x=0.95, time_y=0.95,
+             wind_level_hpa=925, nbarbs=(5, 5), wind_label=False,
+             draw_domain_box=False)
     ax_tpw_z.set_ylabel('')
 
     # ---- save ----------------------------------------------------------------
@@ -1249,7 +1365,14 @@ def combined_cold_pools_wide_ir_only():
                       show_time=True,
                       panel_label=lbl,
                       label_x=0.06, label_y=0.94,
-                      time_x=0.94, time_y=0.94)
+                      time_x=0.94, time_y=0.94,
+                      ir_cmap='cold_tops_bands')
+
+            # 925 hPa ERA5 wind barbs (black: white barbs vanish on the white base map),
+            # valid at the panel's scan hour (06, 12, 18, 00 UTC)
+            when = pd.Timestamp(ds.time_bounds.values[1]).round('h').strftime('%Y-%m-%dT%H:%M')
+            # _add_era5_barbs(ax, lons, lats, 925, nbarbs=(8, 8), color='k',
+            #                 label=(row == 0 and col == 0), when=when)
 
             # ---- ticks: use grid positions so ticks always sit on gridlines ----
             # strict-interior filter avoids crowded boundary ticks between panels
@@ -1290,16 +1413,8 @@ def combined_cold_pools_wide_ir_only():
             # add matching gridlines (same locs on all panels)
             ax.gridlines(xlocs=grid_lons, ylocs=grid_lats,
                          draw_labels=False,
-                         linewidth=0.5, color='white', alpha=0.5,
+                         linewidth=0.5, color='0.5', alpha=0.5,
                          linestyle='-', zorder=5)
-
-            # draw thick green box showing the tight zoom domain extent (Figure 4)
-            if True:   # zoom domain shown on all four panels
-                ax.plot(
-                    [lons_conv[0], lons_conv[1], lons_conv[1], lons_conv[0], lons_conv[0]],
-                    [lats_conv[0], lats_conv[0], lats_conv[1], lats_conv[1], lats_conv[0]],
-                    color='limegreen', ls='--', lw=2.0, transform=pc, zorder=10
-                )
 
     # ---- save ----------------------------------------------------------------
     savepath = path_figures
@@ -1311,3 +1426,45 @@ def combined_cold_pools_wide_ir_only():
 
 
 # %%
+
+
+def ir_cmap_test():
+    """
+    Test figure: the figure-2 zoom IR panel (domain 1, ~18 UTC) drawn with the
+    candidate cold-top colormaps side by side, to compare contrast between
+    moderate and very cold convection.
+      (a) cold_tops       : RdYlBu, red coldest
+      (b) cold_tops_turbo : turbo reversed, dark red coldest
+      (c) cold_tops_bands : discrete 10 degC bands
+    Saves to figures-v-temp-2026-11-09-tdr-class-check/ir_cmap_test.png
+    """
+    lons_conv = (-57, -51);  lats_conv = (6, 12)
+    path_data_conv = str(path_project) + "/data/goes-level2-convection/"
+    conv_files = pull_files_helper(path_data_conv)
+    ds_conv = data_subset(path_data_conv, conv_files[2], lats_conv, lons_conv)
+
+    out_dir = str(path_project) + "/figures-v-temp-2026-11-09-tdr-class-check/"
+    os.makedirs(out_dir, exist_ok=True)
+
+    styles = [('cold_tops', 'a'), ('cold_tops_turbo', 'b'), ('cold_tops_bands', 'c')]
+    asp = _panel_aspect(lons_conv, lats_conv)
+    row_h = 3.5
+    fig = plt.figure(figsize=(3 * row_h * asp + 1.5, row_h))
+    gs = fig.add_gridspec(1, 3, wspace=0.45)
+    for i, (style, lab) in enumerate(styles):
+        ax = fig.add_subplot(gs[0, i], projection=ccrs.PlateCarree())
+        cax = ax.inset_axes([1.03, 0.05, 0.055, 0.90])
+        test_plot(ds_conv, channel='ir', lats=lats_conv, lons=lons_conv,
+                  big_font=True, ax=ax, fig=fig,
+                  show_colorbar=True, cax=cax,
+                  show_lat=(i == 0), show_lon=False,
+                  show_title_banner=False, show_time=False,
+                  panel_label=lab, label_x=0.05, label_y=0.95,
+                  ir_cmap=style)
+        ax.set_title(style, fontsize=plt.rcParams['axes.labelsize'])
+        if i > 0:
+            ax.set_ylabel('')
+
+    plt.savefig(out_dir + 'ir_cmap_test.png', dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    print('Saved ir_cmap_test.png')
